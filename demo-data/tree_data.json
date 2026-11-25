@@ -1,0 +1,52 @@
+{
+  "trees": [
+    {
+      "id": 4656,
+      "species": "Narra",
+      "status": "Healthy",
+      "height": 3.4,
+      "location": "16.402300,120.596000",
+      "diameter": 5.8,
+      "plantedDate": "2025-06-14",
+      "notes": "Canopy evenly filled.",
+      "owner": "admin",
+      "imagePath": null
+    },
+    {
+      "id": 5861,
+      "species": "Alnus",
+      "status": "Healthy",
+      "height": 2.7,
+      "location": "16.409100,120.601800",
+      "diameter": 4.5,
+      "plantedDate": "2025-06-14",
+      "notes": "New leaves recorded.",
+      "owner": "admin",
+      "imagePath": null
+    },
+    {
+      "id": 4499,
+      "species": "Mahogany",
+      "status": "Monitoring",
+      "height": 4.1,
+      "location": "16.398800,120.603100",
+      "diameter": 7.2,
+      "plantedDate": "2025-06-14",
+      "notes": "Inspect leaf discoloration at the next visit.",
+      "owner": "admin",
+      "imagePath": null
+    },
+    {
+      "id": 5638,
+      "species": "Benguet Pine",
+      "status": "At Risk",
+      "height": 1.8,
+      "location": "16.405700,120.598500",
+      "diameter": 3.2,
+      "plantedDate": "2025-06-14",
+      "notes": "Inspect the exposed roots on the eastern slope.",
+      "owner": "admin",
+      "imagePath": null
+    }
+  ]
+}

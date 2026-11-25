@@ -1,0 +1,23 @@
+{
+  "users" : [ {
+    "username" : "admin",
+    "passwordHash" : "4skT1Osj1PmIPeGzZOnyOA==:qoYJ5OBTbcKSEQCH6kOD1XeSl43KcQKeYmupqhzgiSk=",
+    "displayName" : "Admin",
+    "avatarPath" : null
+  }, {
+    "username" : "user1",
+    "passwordHash" : "d8i8mi/QGi9HqquvKou3ag==:X3vg4/VWfZXN7DezzAMlfjmg9zb+XNX2UjWSp2rQAdQ=",
+    "displayName" : "Ranger 1",
+    "avatarPath" : null
+  }, {
+    "username" : "user2",
+    "passwordHash" : "Yw75jdz+b49d4JP5rbRqyw==:57d+wRvbjxq5cPTfDHlHls0QCoI/M0eFjeIoJiHoNzU=",
+    "displayName" : "Ranger 2",
+    "avatarPath" : null
+  }, {
+    "username" : "dale",
+    "passwordHash" : "oVVdZvwZhxxLzyZtGZFTjA==:xBQWNhfeyZhzHMzs2x2ZrhEP1FKkJPbLIaJcRrkJyiM=",
+    "displayName" : "dale",
+    "avatarPath" : null
+  } ]
+}

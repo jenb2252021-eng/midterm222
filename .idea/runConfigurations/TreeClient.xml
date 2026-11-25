@@ -1,0 +1,11 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="TreeClient" type="Application" factoryName="Application">
+    <option name="MAIN_CLASS_NAME" value="client_GUI.TreeClient" />
+    <module name="my-app" />
+    <option name="VM_PARAMETERS" value="--enable-native-access=javafx.graphics --enable-native-access=javafx.web" />
+    <shortenClasspath name="NONE" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>

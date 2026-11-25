@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no"/>
+  <link rel="stylesheet" href="leaflet/leaflet.css"/>
+  <script>window.L_DISABLE_3D = true;</script>
+  <script src="leaflet/leaflet.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #D9E1B8; }
+    #map { width: 100%; height: 100%; }
+    #banner {
+      position: fixed; z-index: 5000; left: 8px; bottom: 8px;
+      background: rgba(255,255,255,0.92); font: 12px system-ui, sans-serif;
+      padding: 6px 10px; border-radius: 8px; color: #3E2723; pointer-events: none;
+      max-width: 520px;
+    }
+    #mapTileControls {
+      display: none; position: fixed; z-index: 10000; top: 8px; right: 8px;
+      align-items: center; gap: 6px;
+      background: rgba(255,255,255,0.95); padding: 6px 10px; border-radius: 8px;
+      font: 12px system-ui, sans-serif; box-shadow: 0 1px 6px rgba(0,0,0,.15);
+    }
+    .tile-label { color: #3E2723; margin-right: 2px; font-weight: 600; }
+    .tile-btn {
+      cursor: pointer; border: 1px solid #BDBDBD; background: #fff;
+      color: #3E2723; padding: 3px 8px; border-radius: 6px; font: inherit;
+    }
+    .tile-btn:hover { background: #E8F5E9; }
+    .tile-btn.active { background: #2D5A27; color: #fff; border-color: #2D5A27; }
+    .leaflet-pin-marker { background: transparent !important; border: none !important; }
+    .pin-drop {
+      width: 22px; height: 22px; background: #c62828;
+      border: 3px solid #fff; border-radius: 50%;
+      box-shadow: 0 2px 8px rgba(0,0,0,.35);
+    }
+    #offlineNotice {
+      display: none; position: fixed; z-index: 10001; bottom: 56px; left: 8px; right: 8px;
+      padding: 6px 10px; border-radius: 8px;
+      background: rgba(61,40,20,0.9); color: #fff8e7; font: 11px/1.45 system-ui, sans-serif;
+      pointer-events: none; text-align: center;
+    }
+  </style>
+</head>
+<body>
+<div id="map"></div>
+<div id="banner">Loading map…</div>
+<div id="mapTileControls">
+  <span class="tile-label">Tiles</span>
+  <button type="button" id="btnTilesOnline" class="tile-btn">Online</button>
+  <button type="button" id="btnTilesOffline" class="tile-btn">Offline</button>
+</div>
+<div id="offlineNotice">Offline tiles: <strong>Baguio region only</strong>.</div>
+<script>
+(function () {
+  var leafletMap = null, leafletMarker = null, googleMap = null, googleMarker = null;
+  var leafletTileLayer = null, _pendingCfg = null, _mapReady = false;
+  var cfg = { lat: 16.3933, lon: 120.5960, zoom: 14, useGoogle: false, apiKey: '', offlineTiles: false, tileUrlTemplate: '', greyTileUrl: '' };
+
+  /* ---- Sizing: Java passes explicit w/h, or we measure ourselves ---- */
+  var _javaW = 0, _javaH = 0;
+  window._setContainerSize = function (w, h) { _javaW = w; _javaH = h; applySize(); };
+
+  function applySize() {
+    var el = document.getElementById('map');
+    if (!el) return;
+    var w = _javaW > 10 ? _javaW : (window.innerWidth || document.documentElement.clientWidth || 800);
+    var h = _javaH > 10 ? _javaH : (window.innerHeight || document.documentElement.clientHeight || 600);
+    if (w < 50) w = 800;
+    if (h < 50) h = 600;
+    el.style.width = w + 'px';
+    el.style.height = h + 'px';
+    if (leafletMap) leafletMap.invalidateSize({ pan: false });
+  }
+
+  var _inv = null;
+  function scheduleMapInvalidate() {
+    if (_inv) clearTimeout(_inv);
+    _inv = setTimeout(function () {
+      _inv = null;
+      applySize();
+      requestAnimationFrame(applySize);
+      setTimeout(applySize, 150);
+      setTimeout(applySize, 500);
+    }, 10);
+  }
+  window.scheduleMapInvalidate = scheduleMapInvalidate;
+  window.invalidateMap = applySize;
+  window.addEventListener('resize', scheduleMapInvalidate);
+
+  /* ---- Wait for container to have real dimensions before creating map ---- */
+  function containerReady() {
+    var w = _javaW > 10 ? _javaW : (window.innerWidth || 0);
+    var h = _javaH > 10 ? _javaH : (window.innerHeight || 0);
+    return w > 50 && h > 50;
+  }
+
+  var _waitTimer = null;
+  function waitForSizeThenInit() {
+    if (containerReady()) {
+      _waitTimer = null;
+      doInit();
+    } else {
+      _waitTimer = setTimeout(waitForSizeThenInit, 60);
+    }
+  }
+
+  /* ---- Tile layers ---- */
+  function createOnlineTileLayer() {
+    return L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, keepBuffer: 4, updateWhenIdle: false, attribution: '&copy; OpenStreetMap'
+    });
+  }
+  function offlineRasterLayer() {
+    return L.tileLayer(cfg.tileUrlTemplate || 'tiles/{z}/{x}/{y}.png', {
+      maxZoom: 18, minZoom: 0, keepBuffer: 2,
+      attribution: 'Offline &copy; OpenStreetMap',
+      errorTileUrl: cfg.greyTileUrl || 'leaflet/grey_tile.png'
+    });
+  }
+
+  /* ---- Pin ---- */
+  function pinIcon() {
+    return L.divIcon({ className: 'leaflet-pin-marker', html: '<div class="pin-drop"></div>', iconSize: [28, 36], iconAnchor: [14, 34] });
+  }
+  function setBanner(t) { var b = document.getElementById('banner'); if (b) b.textContent = t; }
+  window.setBanner = setBanner;
+
+  function showPin(lat, lng) {
+    if (leafletMap) {
+      if (!leafletMarker) leafletMarker = L.marker([lat, lng], { icon: pinIcon() }).addTo(leafletMap);
+      else leafletMarker.setLatLng([lat, lng]).setIcon(pinIcon());
+      leafletMap.panTo([lat, lng]);
+    }
+    if (googleMap && google.maps) {
+      var p = { lat: lat, lng: lng };
+      if (!googleMarker) googleMarker = new google.maps.Marker({ position: p, map: googleMap });
+      else googleMarker.setPosition(p);
+      googleMap.panTo(p);
+    }
+  }
+  function clearPin() {
+    if (leafletMarker && leafletMap) { leafletMap.removeLayer(leafletMarker); leafletMarker = null; }
+    if (googleMarker) { googleMarker.setMap(null); googleMarker = null; }
+  }
+  window.showPin = showPin;
+  window.clearMapPin = clearPin;
+
+  function pushCoordsToJava(lat, lng, n) {
+    if (typeof n !== 'number') n = 0;
+    var s = lat.toFixed(6) + ',' + lng.toFixed(6);
+    try { if (window.javaPicker && window.javaPicker.applyPinCoordinates) { window.javaPicker.applyPinCoordinates(s); return; } } catch (e) {}
+    try { if (window.javaPicker && window.javaPicker.onPinProposed) { window.javaPicker.onPinProposed(lat, lng); return; } } catch (e) {}
+    if (n < 8) setTimeout(function () { pushCoordsToJava(lat, lng, n + 1); }, 60);
+  }
+
+  function onClickLeaflet(e) {
+    if (!leafletMap) return;
+    applySize();
+    var lat = Number(e.latlng.lat), lng = Number(e.latlng.lng);
+    if (!isFinite(lat) || !isFinite(lng)) return;
+    showPin(lat, lng);
+    setTimeout(function () { pushCoordsToJava(lat, lng, 0); }, 0);
+  }
+  function onClickGoogle(e) {
+    var lat = Number(e.latLng.lat()), lng = Number(e.latLng.lng());
+    if (!isFinite(lat) || !isFinite(lng)) return;
+    showPin(lat, lng);
+    setTimeout(function () { pushCoordsToJava(lat, lng, 0); }, 0);
+  }
+
+  /* ---- Tile mode ---- */
+  function setLeafletOffline(off, persist) {
+    if (!leafletMap) return;
+    if (leafletTileLayer) leafletMap.removeLayer(leafletTileLayer);
+    leafletTileLayer = off ? offlineRasterLayer() : createOnlineTileLayer();
+    leafletTileLayer.addTo(leafletMap);
+    var bOn = document.getElementById('btnTilesOnline'), bOff = document.getElementById('btnTilesOffline');
+    if (bOn) bOn.classList.toggle('active', !off);
+    if (bOff) bOff.classList.toggle('active', off);
+    var n = document.getElementById('offlineNotice');
+    if (n) n.style.display = off ? 'block' : 'none';
+    if (persist && window.javaMapPrefs) { try { window.javaMapPrefs.setOfflineTiles(off); } catch (e) {} }
+    scheduleMapInvalidate();
+  }
+
+  /* ---- Actual map creation (called only when container has real size) ---- */
+  function doInit() {
+    if (_mapReady) return;
+    _mapReady = true;
+    applySize();
+    if (cfg.useGoogle && cfg.apiKey) { initGoogle(); } else { initLeaflet(); }
+  }
+
+  function initLeaflet() {
+    leafletMap = L.map('map', {
+      zoomControl: true, worldCopyJump: true,
+      fadeAnimation: false, markerZoomAnimation: false, zoomAnimation: false, tap: true
+    }).setView([cfg.lat, cfg.lon], cfg.zoom);
+    setLeafletOffline(cfg.offlineTiles, false);
+    leafletMap.on('click', onClickLeaflet);
+    document.getElementById('mapTileControls').style.display = 'flex';
+    document.getElementById('btnTilesOnline').onclick = function () { setLeafletOffline(false, true); };
+    document.getElementById('btnTilesOffline').onclick = function () { setLeafletOffline(true, true); };
+    setBanner('Tap map to place a pin.');
+    [0, 50, 200, 500, 1000, 2000].forEach(function (d) { setTimeout(applySize, d); });
+  }
+
+  function initGoogle() {
+    document.getElementById('offlineNotice').style.display = 'none';
+    document.getElementById('mapTileControls').style.display = 'none';
+    window._gmInitPicker = function () {
+      googleMap = new google.maps.Map(document.getElementById('map'), {
+        center: { lat: cfg.lat, lng: cfg.lon }, zoom: cfg.zoom, mapTypeId: 'hybrid'
+      });
+      googleMap.addListener('click', onClickGoogle);
+      setBanner('Tap map to place a pin.');
+    };
+    var s = document.createElement('script');
+    s.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(cfg.apiKey) + '&callback=window._gmInitPicker';
+    s.async = true;
+    document.head.appendChild(s);
+  }
+
+  /* ---- Public init (called from Java) ---- */
+  window.initPicker = function (c) {
+    if (c) {
+      if (typeof c.lat === 'number') cfg.lat = c.lat;
+      if (typeof c.lon === 'number') cfg.lon = c.lon;
+      if (typeof c.zoom === 'number') cfg.zoom = c.zoom;
+      if (typeof c.useGoogle === 'boolean') cfg.useGoogle = c.useGoogle;
+      if (typeof c.apiKey === 'string') cfg.apiKey = c.apiKey;
+      if (typeof c.offlineTiles === 'boolean') cfg.offlineTiles = c.offlineTiles;
+      if (typeof c.tileUrlTemplate === 'string' && c.tileUrlTemplate.length) cfg.tileUrlTemplate = c.tileUrlTemplate;
+      if (typeof c.greyTileUrl === 'string' && c.greyTileUrl.length) cfg.greyTileUrl = c.greyTileUrl;
+      if (typeof c.containerW === 'number') _javaW = c.containerW;
+      if (typeof c.containerH === 'number') _javaH = c.containerH;
+    }
+    waitForSizeThenInit();
+  };
+})();
+</script>
+</body>
+</html>

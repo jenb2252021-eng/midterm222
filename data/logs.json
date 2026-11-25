@@ -1,0 +1,43 @@
+{
+  "logs" : [ {
+    "timestamp" : "2026-04-08 18:30:54",
+    "user" : "admin",
+    "action" : "ADD_TREE",
+    "details" : "Species: Woman 1, Location: 16.380602,120.603479"
+  }, {
+    "timestamp" : "2026-04-08 18:31:42",
+    "user" : "admin",
+    "action" : "ADD_TREE",
+    "details" : "Species: Woman 2, Location: 16.380591,120.603401"
+  }, {
+    "timestamp" : "2026-04-08 18:32:03",
+    "user" : "admin",
+    "action" : "CHAT_SEND",
+    "details" : "To user1: Yo"
+  }, {
+    "timestamp" : "2026-04-08 18:32:06",
+    "user" : "admin",
+    "action" : "CHAT_SEND_ATTACHMENT",
+    "details" : "To user1 file=LINE_ALBUM_240406秋葉聡さん撮影_240710_1-533x800.jpg type=IMAGE"
+  }, {
+    "timestamp" : "2026-04-08 18:42:10",
+    "user" : "admin",
+    "action" : "LOGOUT",
+    "details" : "User signed out"
+  }, {
+    "timestamp" : "2026-04-08 18:42:13",
+    "user" : "user1",
+    "action" : "LOGOUT",
+    "details" : "User signed out"
+  }, {
+    "timestamp" : "2026-04-08 18:47:21",
+    "user" : "user1",
+    "action" : "LOGOUT",
+    "details" : "User signed out"
+  }, {
+    "timestamp" : "2026-04-08 18:47:24",
+    "user" : "admin",
+    "action" : "LOGOUT",
+    "details" : "User signed out"
+  } ]
+}

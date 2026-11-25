@@ -1,0 +1,25 @@
+{
+  "trees" : [ {
+    "id" : 6975,
+    "species" : "Woman 1",
+    "location" : "16.380602,120.603479",
+    "height" : 1.63,
+    "diameter" : 80.0,
+    "plantedDate" : "2026-04-08",
+    "status" : "Healthy",
+    "notes" : "my wife",
+    "owner" : "admin",
+    "imagePath" : "data/images/trees/tree_6975.img"
+  }, {
+    "id" : 6938,
+    "species" : "Woman 2",
+    "location" : "16.380591,120.603401",
+    "height" : 1.64,
+    "diameter" : 80.0,
+    "plantedDate" : "2026-04-08",
+    "status" : "Healthy",
+    "notes" : "",
+    "owner" : "admin",
+    "imagePath" : "data/images/trees/tree_6938.img"
+  } ]
+}

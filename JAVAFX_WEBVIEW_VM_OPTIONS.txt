@@ -1,0 +1,78 @@
+Blank Field Map / Geospatial map (white WebView) on JDK 22+
+-------------------------------------------------------------
+WebView needs native WebKit. On recent JDKs you MUST allow native access for javafx.web:
+
+  --enable-native-access=javafx.graphics
+  --enable-native-access=javafx.web
+
+These are set in the repo for IntelliJ Run configs "Launcher" and "TreeClient", and in
+pom.xml for javafx-maven-plugin. If maps are still white, check Run -> Edit Configurations
+-> your config -> VM options includes both lines above.
+
+Maven "No goals have been specified" / exec:exec failure
+---------------------------------------------------------
+If the Run tool shows:  mvn ... exec:exec  then BUILD FAILURE / No goals:
+1) Project path MUST NOT contain spaces. A path like D:\FOR IT\... breaks the Maven command line
+   (the space splits -Dexec.workingdir=... so Maven never sees the exec:exec goal).
+   Fix: move the repo to e.g. D:\dev\midterm222 or C:\Users\You\Projects\midterm222
+2) IntelliJ: Settings -> Build, Execution, Deployment -> Build Tools -> Maven -> Runner
+   -> turn OFF "Delegate IDE build/run actions to Maven" so the green Run button uses the
+   JVM directly (Application) instead of wrapping in Maven exec.
+3) Run configuration "Launcher" must be type Application (Java), not a Maven goal.
+   Prefer: Run -> Edit Configurations -> Launcher -> Build and run = module "my-app", Main class app.Launcher
+
+Where is module-info.class?
+---------------------------
+Maven writes it next to your compiled packages:
+  target/classes/module-info.class
+  target/classes/app/Launcher.class
+  target/classes/client_GUI/...
+Source lives at: src/module-info.java (no package; must stay at the root of the compile source root).
+
+If the IDE shows "module not found" for javafx.* or jackson while compiling module-info.java:
+  - Maven: explicit deps added in pom.xml for jackson-core + jackson-annotations (not only databind).
+  - IntelliJ: Maven tool window -> Reload All Projects. Settings -> Build Tools -> Maven -> Runner:
+    consider "Delegate IDE build/run actions to Maven" so javac uses the same module path as `mvn compile`.
+
+JPMS: see src/module-info.java (Java module name: com.mycompany.app).
+
+If you see: Module com.mycompany.app not found (FindException)
+----------------------------------------------------------
+IntelliJ must put compiled module-info.class on the module path. Fixes applied in repo:
+  - my-app.iml: Maven libraries + inherit-compiler-output=false, output=target/classes
+  - Run configs: shortenClasspath NONE (arg-files can drop the app module from -p)
+  - compiler.xml: module name "my-app" (matches artifactId / my-app.iml)
+
+Do this locally:
+1) Build -> Rebuild Project   (or mvn compile)
+2) Confirm file exists: target/classes/module-info.class
+3) Run configuration: Module = "my-app", Main class = app.Launcher, VM options = see "Blank Field Map" above
+4) Or run configuration: "javafx-run (Maven)" -> uses mvn javafx:run (always correct module path)
+
+Portable CLI:
+  mvn -q javafx:run
+
+Client only:
+  mvn -q javafx:run -Djavafx.mainClass=com.mycompany.app/client_GUI.TreeClient
+
+Do not hand-paste --module-path unless it includes target/classes AND all OpenJFX jars.
+
+sun.misc.Unsafe / Marlin warnings on JDK 22+
+---------------------------------------------
+You may see at startup:
+
+  WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+  WARNING: sun.misc.Unsafe::allocateMemory has been called by com.sun.marlin.OffHeapArray
+  (javafx-graphics)
+
+This comes from JavaFX's Marlin rasterizer using off-heap memory. It is noisy but not an
+application bug. OpenJDK plans to remove Unsafe::allocateMemory in a future release; a future
+JavaFX update should migrate away from it. Safe to ignore for coursework / local runs unless
+you need a completely clean console.
+
+Offline map tiles
+-----------------
+Offline mode uses local PNGs under map_web/tiles/{z}/{x}/{y}.png (Leaflet). Missing tiles
+show leaflet/grey_tile.png instead of broken-image red blocks. Run scripts/create-grey-tile.ps1
+if needed, scripts/download-sample-world-tile.ps1 for one world tile, or
+scripts/download-osm-tiles.ps1 for a full zoom range (see map_web/tiles/README.txt).
