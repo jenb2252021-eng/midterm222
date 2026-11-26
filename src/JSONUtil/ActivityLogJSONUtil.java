@@ -53,6 +53,97 @@ public class ActivityLogJSONUtil {
         return result;
     }
 
+    /**
+     * Activity-log lines that concern one tree, newest first, as {@code "yyyy-MM-dd HH:mm | user | event"}.
+     * Older entries that predate tree IDs in the log are matched by their species and location.
+     */
+    public static synchronized ArrayList<String> historyForTree(int treeId, String species, String location) {
+        java.util.regex.Pattern idRef = java.util.regex.Pattern.compile("(?:ID:?\\s*|#)" + treeId + "(?!\\d)");
+        String legacyAdd = species == null || location == null ? null : "Species: " + species + ", Location: " + location;
+        ArrayList<String> out = new ArrayList<>();
+        for (LogEntry e : readLogEntries()) {
+            String action = e.action == null ? "" : e.action;
+            String details = e.details == null ? "" : e.details;
+            boolean mentionsId = idRef.matcher(details).find();
+            String event = null;
+            switch (action) {
+                case "ADD_TREE" -> {
+                    if (mentionsId || (legacyAdd != null && details.startsWith(legacyAdd))) {
+                        String status = afterKey(details, "Status: ");
+                        event = "Registered in the inventory" + (status != null ? " (" + status + ")" : "");
+                    }
+                }
+                case "SUBMIT_PENDING_TREE" -> {
+                    if (mentionsId || (legacyAdd != null && details.startsWith(legacyAdd))) event = "Submitted by ranger for review";
+                }
+                case "APPROVE_PENDING_TREE" -> {
+                    if (mentionsId) event = "Approved by admin and added to the inventory";
+                }
+                case "UPDATE_TREE" -> {
+                    if (mentionsId) {
+                        int dot = details.indexOf(" · ");
+                        event = dot >= 0 ? details.substring(dot + 3) : "Record updated";
+                    }
+                }
+                case "DELETE_TREE" -> {
+                    if (mentionsId) event = "Removed from the inventory (archived)";
+                }
+                default -> { }
+            }
+            if (event != null) {
+                String when = e.timestamp == null ? "" : (e.timestamp.length() >= 16 ? e.timestamp.substring(0, 16) : e.timestamp);
+                out.add(when + " | " + (e.user == null ? "" : e.user) + " | " + event);
+            }
+        }
+        Collections.reverse(out);
+        return out;
+    }
+
+    private static String afterKey(String details, String key) {
+        int i = details.indexOf(key);
+        if (i < 0) return null;
+        String rest = details.substring(i + key.length());
+        int comma = rest.indexOf(',');
+        return (comma >= 0 ? rest.substring(0, comma) : rest).trim();
+    }
+
+    /**
+     * Human-readable summary of what changed in an edit, e.g. {@code " · Status: Healthy → Monitoring · Height: 3.4 → 3.6 m"}.
+     * Empty when nothing visible changed.
+     */
+    public static String describeChanges(Model.Tree before, Model.Tree after) {
+        if (before == null || after == null) return "";
+        StringBuilder sb = new StringBuilder();
+        change(sb, "Status", before.status, after.status, "");
+        change(sb, "Height", num(before.height), num(after.height), " m");
+        change(sb, "Diameter", num(before.diameter), num(after.diameter), " cm");
+        change(sb, "Species", before.species, after.species, "");
+        change(sb, "Location", before.location, after.location, "");
+        change(sb, "Planted", before.plantedDate, after.plantedDate, "");
+        if (!java.util.Objects.equals(blankToNull(before.notes), blankToNull(after.notes))) sb.append(" · Field notes updated");
+        if (after.imageBytes != null && after.imageBytes.length > 0) {
+            byte[] old = before.imageBytes != null && before.imageBytes.length > 0
+                    ? before.imageBytes : storage.ImageStorage.loadTreeImageById(before.id);
+            if (old == null || old.length == 0) sb.append(" · Photo added");
+            else if (!java.util.Arrays.equals(old, after.imageBytes)) sb.append(" · Photo updated");
+        }
+        return sb.toString();
+    }
+
+    private static void change(StringBuilder sb, String label, String a, String b, String unit) {
+        if (java.util.Objects.equals(blankToNull(a), blankToNull(b))) return;
+        sb.append(" · ").append(label).append(": ").append(a == null || a.isBlank() ? "—" : a.trim())
+                .append(" → ").append(b == null || b.isBlank() ? "—" : b.trim()).append(unit);
+    }
+
+    private static String num(double v) {
+        return v == Math.rint(v) ? String.valueOf((long) v) : String.valueOf(v);
+    }
+
+    private static String blankToNull(String s) {
+        return s == null || s.isBlank() ? null : s.trim();
+    }
+
     private static ArrayList<LogEntry> readLogEntries() {
         if (!FILE.exists()) {
             return new ArrayList<>();

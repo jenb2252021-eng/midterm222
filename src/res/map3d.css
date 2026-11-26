@@ -1,0 +1,125 @@
+/* The Lorax · 3D Forest Map overlays. Uses the same palette as registry.css (scoped to .tree-map). */
+.tree-map { -fx-font-family: "Segoe UI", "SF Pro Text", "Helvetica Neue", sans-serif; -fx-font-size: 12.5px; }
+.tree-map .label { -fx-text-fill: #18231e; }
+
+.tree-map .tm-topbar {
+    -fx-background-color: white;
+    -fx-padding: 16 24;
+    -fx-border-color: transparent transparent #dfe5e0 transparent;
+}
+.tree-map .tm-heading { -fx-font-size: 22px; -fx-text-fill: #18231e; }
+.tree-map .tm-sub { -fx-text-fill: #627269; -fx-font-size: 12px; }
+.tree-map .tm-status {
+    -fx-text-fill: #42715b; -fx-font-size: 11.5px; -fx-background-color: #eef5f0;
+    -fx-background-radius: 999; -fx-padding: 4 10;
+}
+.tree-map .tm-muted { -fx-text-fill: #627269; }
+.tree-map .tm-caption { -fx-text-fill: #42715b; -fx-font-size: 10.5px; -fx-font-weight: bold; }
+.tree-map .tm-title { -fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #18231e; }
+.tree-map .tm-key { -fx-text-fill: #627269; -fx-font-size: 11.5px; }
+.tree-map .tm-value { -fx-text-fill: #18231e; -fx-font-size: 12.5px; }
+
+.tree-map .tm-panel {
+    -fx-background-color: rgba(255, 255, 255, 0.97);
+    -fx-background-radius: 14;
+    -fx-border-color: #dfe5e0;
+    -fx-border-radius: 14;
+    -fx-effect: dropshadow(gaussian, rgba(28, 58, 42, 0.14), 20, 0, 0, 6);
+}
+.tree-map .scroll-pane, .tree-map .scroll-pane > .viewport { -fx-background-color: transparent; -fx-background: transparent; }
+.tree-map .scroll-pane.tm-panel { -fx-background-color: rgba(255, 255, 255, 0.98); -fx-background-radius: 14; }
+
+.tree-map .tm-chip { -fx-background-radius: 999; -fx-padding: 3 10; -fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: white; }
+.tree-map .tm-id-chip {
+    -fx-background-color: #eaf3ed; -fx-text-fill: #1d6b47; -fx-background-radius: 999;
+    -fx-padding: 3 10; -fx-font-size: 11px; -fx-font-weight: bold;
+}
+
+/* Buttons */
+.tree-map .button.tm-btn {
+    -fx-background-color: white; -fx-text-fill: #26694e; -fx-background-radius: 8; -fx-border-radius: 8;
+    -fx-border-color: #cfdcd3; -fx-padding: 7 12; -fx-cursor: hand; -fx-font-size: 12px;
+}
+.tree-map .button.tm-btn:hover { -fx-background-color: #eef5f0; -fx-border-color: #20865b; }
+.tree-map .button.tm-primary {
+    -fx-background-color: #20865b; -fx-text-fill: white; -fx-font-weight: bold; -fx-border-color: #20865b;
+}
+.tree-map .button.tm-primary:hover { -fx-background-color: #176744; }
+
+.tree-map .toggle-button.tm-toggle, .tree-map .toggle-button.tm-segment {
+    -fx-background-color: white; -fx-text-fill: #35453b; -fx-border-color: #cfdcd3; -fx-padding: 7 13; -fx-cursor: hand;
+    -fx-background-radius: 8; -fx-border-radius: 8; -fx-font-size: 12px;
+}
+.tree-map .toggle-button.tm-segment-left { -fx-background-radius: 8 0 0 8; -fx-border-radius: 8 0 0 8; }
+.tree-map .toggle-button.tm-segment-right { -fx-background-radius: 0 8 8 0; -fx-border-radius: 0 8 8 0; -fx-border-width: 1 1 1 0; }
+.tree-map .toggle-button.tm-toggle:hover, .tree-map .toggle-button.tm-segment:hover { -fx-background-color: #eef5f0; }
+.tree-map .toggle-button.tm-toggle:selected, .tree-map .toggle-button.tm-segment:selected {
+    -fx-background-color: #e1eee6; -fx-text-fill: #11633d; -fx-font-weight: bold; -fx-border-color: #9fc8b0;
+}
+
+/* Map navigation */
+.tree-map .button.tm-nav {
+    -fx-background-color: white; -fx-text-fill: #1d6b47; -fx-font-size: 15px; -fx-font-weight: bold;
+    -fx-min-width: 38; -fx-min-height: 38; -fx-pref-width: 38; -fx-pref-height: 38; -fx-background-radius: 10;
+    -fx-border-color: #dce5df; -fx-border-radius: 10; -fx-cursor: hand; -fx-padding: 0;
+    -fx-effect: dropshadow(gaussian, rgba(28, 58, 42, 0.14), 10, 0, 0, 2);
+}
+.tree-map .button.tm-nav:hover { -fx-background-color: #eef5f0; -fx-border-color: #20865b; }
+
+/* Inputs */
+.tree-map .text-field {
+    -fx-background-color: #fafbfa; -fx-text-fill: #18231e; -fx-prompt-text-fill: #8a9890;
+    -fx-background-radius: 8; -fx-border-color: #dbe2dc; -fx-border-radius: 8; -fx-padding: 8 10;
+}
+.tree-map .text-field:focused { -fx-border-color: #20865b; }
+.tree-map .combo-box { -fx-background-color: #fafbfa; -fx-background-radius: 8; -fx-border-color: #dbe2dc; -fx-border-radius: 8; }
+.tree-map .combo-box .list-cell { -fx-text-fill: #18231e; -fx-background-color: transparent; }
+
+.tree-map .list-view { -fx-background-color: transparent; -fx-background-insets: 0; -fx-padding: 0; -fx-border-color: transparent; }
+.tree-map .list-view .list-cell { -fx-background-color: transparent; -fx-padding: 8 8; -fx-background-radius: 9; }
+.tree-map .list-view .list-cell:hover { -fx-background-color: #f1f6f3; }
+.tree-map .list-view .list-cell:selected { -fx-background-color: #e1eee6; }
+.tree-map .list-view .list-cell:empty { -fx-background-color: transparent; }
+.tree-map .scroll-bar { -fx-background-color: transparent; }
+.tree-map .scroll-bar .thumb { -fx-background-color: #cfdcd3; -fx-background-radius: 6; }
+.tree-map .scroll-bar .increment-button, .tree-map .scroll-bar .decrement-button { -fx-padding: 0; -fx-pref-height: 0; -fx-pref-width: 0; }
+.tree-map .slider .track { -fx-background-color: #dfe7e2; }
+.tree-map .slider .thumb { -fx-background-color: #20865b; }
+.tree-map .separator .line { -fx-border-color: #e4ebe6; }
+
+/* Floating labels */
+.tree-map .tm-tag {
+    -fx-background-color: rgba(255, 255, 255, 0.95); -fx-background-radius: 6; -fx-padding: 3 8;
+    -fx-text-fill: #18231e; -fx-font-size: 11px; -fx-font-weight: bold; -fx-border-radius: 6; -fx-border-width: 0 0 0 3;
+    -fx-effect: dropshadow(gaussian, rgba(28, 58, 42, 0.18), 6, 0, 0, 1);
+}
+.tree-map .tm-tooltip {
+    -fx-background-color: white; -fx-background-radius: 9; -fx-padding: 7 11;
+    -fx-border-color: #cfdcd3; -fx-border-radius: 9; -fx-effect: dropshadow(gaussian, rgba(28, 58, 42, 0.18), 10, 0, 0, 3);
+}
+.tree-map .tm-notice {
+    -fx-background-color: #fff8ec; -fx-text-fill: #6b4a12; -fx-background-radius: 9; -fx-padding: 8 12;
+    -fx-border-color: #f0d9ad; -fx-border-radius: 9;
+}
+.tree-map .tm-history-item { -fx-padding: 6 0 6 10; -fx-border-color: transparent transparent transparent #9fc8b0; -fx-border-width: 0 0 0 2; }
+.tree-map .tm-attrib { -fx-background-color: rgba(255, 255, 255, 0.85); -fx-padding: 2 6; -fx-background-radius: 4 0 0 0; }
+.tree-map .tm-attrib .label { -fx-text-fill: #3a4a42; -fx-font-size: 10.5px; }
+
+/* Layers dropdown and scale bar */
+.tree-map .menu-button.tm-menu {
+    -fx-background-color: white; -fx-text-fill: #35453b; -fx-border-color: #cfdcd3; -fx-padding: 4 8;
+    -fx-background-radius: 8; -fx-border-radius: 8; -fx-cursor: hand; -fx-graphic-text-gap: 7;
+}
+.tree-map .menu-button.tm-menu:hover, .tree-map .menu-button.tm-menu:showing { -fx-background-color: #eef5f0; -fx-border-color: #20865b; }
+.tree-map .menu-button.tm-menu .label { -fx-text-fill: #35453b; }
+.tree-map .tm-scale {
+    -fx-background-color: rgba(255, 255, 255, 0.92); -fx-background-radius: 6; -fx-padding: 3 8 5 8;
+    -fx-effect: dropshadow(gaussian, rgba(28, 58, 42, 0.14), 6, 0, 0, 1);
+}
+.tree-map .tm-scale-text { -fx-font-size: 10.5px; -fx-text-fill: #35453b; }
+.tree-map .tm-scale-bar { -fx-border-color: transparent #35453b #35453b #35453b; -fx-border-width: 0 1.5 1.5 1.5; }
+.tree-map .tm-health-card {
+    -fx-background-color: #f5f9f6; -fx-background-radius: 10; -fx-padding: 10 12;
+    -fx-border-width: 0 0 0 4; -fx-border-radius: 10;
+}
+.tree-map .tm-health-value { -fx-font-size: 22px; -fx-font-weight: bold; }

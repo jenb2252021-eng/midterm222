@@ -6,7 +6,7 @@ Leaflet loads local PNG files bundled under /map_web/tiles/:
   {z}/{x}/{y}.png
 
 The Java app passes absolute jar:/file: URLs into the WebView so tiles resolve correctly
-(relative paths often fail when field_map.html is loaded from a JAR).
+(relative paths often fail when picker.html is loaded from a JAR).
 
 Quick setup (Windows, from project root)
 ----------------------------------------

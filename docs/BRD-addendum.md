@@ -18,7 +18,7 @@ A ranger and an administrator should be able to follow one observation from plan
 | Problem and objective | Paper requirements | Implemented module | Evidence for this revision |
 | --- | --- | --- | --- |
 | P1 · Consolidate the team’s field records and find an individual tree again | FR-B1, B3, B4, B7, B8 | Sapling form, tree service, active inventory | R06–R08 reject invalid input. R12 keeps the assigned ID after approval. R13 finds a species. R18 reads the saved JSON. UI01–UI02 render four cards and find one by ID. |
-| P2 · Return to the recorded planting location under intermittent internet access | FR-B5, B13, constraint C1 | Coordinate validation, Field Map and bundled Leaflet tiles | R06 rejects malformed coordinates. UI05 opens the offline map and counts four markers. UI06 filters them to one at-risk tree, and UI09 checks that the bundled raster imagery loads. Field coordinate accuracy still requires a site check. |
+| P2 · Return to the recorded planting location under intermittent internet access | FR-B5, B13, constraint C1 | Coordinate validation, 3D Forest Map and cached or bundled OpenStreetMap tiles | R06 rejects malformed coordinates. UI05 opens the offline 3D Forest Map and counts four 3D trees. UI06 filters them to one at-risk tree, and UI09 checks that each tree stands at its recorded coordinates. M01–M11 (`run.ps1 -Map3D`) cover selection sync with the registry, live updates and monitoring history. Field coordinate accuracy still requires a site check. |
 | P3 · Separate submitted observations from the approved inventory | FR-C1, C3, C4, C5, C6 | Pending Review, My submissions and tree service | R09–R12 follow a ranger submission through approval. R14–R15 cover approval and rejection visibility. R21 checks that a ranger cannot approve. UI08 opens the selected entry on the administrator’s screen. |
 | P4 · Attribute actions to an account and make decisions reviewable | FR-A1–A3, A8, D1, D2 and NFR-07, 08, 10 | User service, session manager, account store, activity log | R01–R05 cover setup, registration, duplicate detection, sign-in and stored password format. R17 finds the approval event, R20 checks sign-out and R22 counts successful submissions in the audit after rejected input. |
 | P5 · Keep a tree’s supporting photograph with the approved record | FR-B6 | Pending image storage, approved image storage and review | R23 sends a generated PNG through approval and compares the returned bytes and stored file. The presentation rehearsal should also open a real, permitted field photo on the second laptop. |
@@ -55,7 +55,7 @@ The identifiers in the matrix refer to [the service checks](../verification/Regi
 | --- | --- |
 | [Sign-in](screens/sign-in.png) | The registry branding, account fields and local server indicator |
 | [Forest Registry](screens/forest-registry.png) | Four seeded records, status totals and percentages, filters and tree IDs |
-| [Field Map](screens/field-map.png) | Baguio map, offline selection and approved records |
+| [3D Forest Map](screens/forest-map.png) | Approved records as 3D trees at their coordinates, offline selection, status filter and health legend |
 | [Pending Review](screens/pending-review.png) | A ranger’s selected submission with its ID, measurements, condition, location and review actions |
 
 ## Acceptance work for the presentation laptops
@@ -65,7 +65,7 @@ The automated service run calls the implementations directly. The environment de
 | Scenario | Expected evidence |
 | --- | --- |
 | Start the host and join from a ranger laptop on the same LAN. Try the host address if discovery fails. | The remote ranger signs in. Record which connection method worked. |
-| Keep the LAN connected, remove internet access and open Field Map in Offline mode. | The four seeded records have pins and the bundled Baguio area remains readable. Check the intended zoom and site. |
+| Keep the LAN connected, remove internet access and open the 3D Map in Offline mode. | The four seeded records stand as 3D trees with pins, and the map imagery cached while online remains readable. Check the intended zoom and site. |
 | Submit a field photo and approve the tree on the other laptop. Search for the ID on both. | The same ID, location, status and photo appear on both clients after refresh. |
 | Halt the host, observe the client, restart the host and reconnect. | The client indicates loss of service, then signs in again and retrieves the previously approved ID. |
 | Ask a classmate to register a tree and another to review it without prompting. | Record completion, any wrong turns and comments with their permission. Quote actual observations in the evaluation. |

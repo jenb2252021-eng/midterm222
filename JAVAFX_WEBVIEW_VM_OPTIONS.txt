@@ -1,4 +1,4 @@
-Blank Field Map / Geospatial map (white WebView) on JDK 22+
+Blank pin-picker map (white WebView) on JDK 22+
 -------------------------------------------------------------
 WebView needs native WebKit. On recent JDKs you MUST allow native access for javafx.web:
 
@@ -46,7 +46,7 @@ IntelliJ must put compiled module-info.class on the module path. Fixes applied i
 Do this locally:
 1) Build -> Rebuild Project   (or mvn compile)
 2) Confirm file exists: target/classes/module-info.class
-3) Run configuration: Module = "my-app", Main class = app.Launcher, VM options = see "Blank Field Map" above
+3) Run configuration: Module = "my-app", Main class = app.Launcher, VM options = see "Blank pin-picker map" above
 4) Or run configuration: "javafx-run (Maven)" -> uses mvn javafx:run (always correct module path)
 
 Portable CLI:

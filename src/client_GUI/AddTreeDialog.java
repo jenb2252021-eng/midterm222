@@ -119,10 +119,10 @@ public class AddTreeDialog extends Stage {
 
         leftSide.getChildren().addAll(
                 RegistryStyle.caption("NEW FIELD RECORD"), lblHeader,
-                createLabel("Species"), fSpecies,
-                createLabel("Height (m)"), fHeight,
-                createLabel("Diameter (cm)"), fDia,
-                new HBox(12, new VBox(4, createLabel("Status"), fStatus), new VBox(4, createLabel("Planted date"), fDate)),
+                createLabel("Species"), fSpecies, errorLabel(fSpecies),
+                createLabel("Height (m)"), fHeight, errorLabel(fHeight),
+                createLabel("Diameter (cm)"), fDia, errorLabel(fDia),
+                new HBox(12, new VBox(4, createLabel("Status"), fStatus), new VBox(4, createLabel("Planted date"), fDate, errorLabel(fDate))),
                 createLabel("Field notes"), fNotes,
                 new HBox(12, previewFrame, btnUpload)
         );
@@ -132,7 +132,7 @@ public class AddTreeDialog extends Stage {
         rightSide.setPadding(new Insets(30));
         rightSide.setAlignment(Pos.CENTER);
 
-        Label lblMapTitle = new Label("Field Map");
+        Label lblMapTitle = new Label("Planting location");
         lblMapTitle.setFont(Font.font("System", FontWeight.BOLD, 12));
         lblMapTitle.setTextFill(Color.valueOf(COLOR_LEAF));
 
@@ -145,6 +145,7 @@ public class AddTreeDialog extends Stage {
         lblMapWarning.setTextFill(Color.valueOf("#8B4513"));
 
         TreeMapPickerPane mapPanel = new TreeMapPickerPane(fLoc);
+        fLoc.textProperty().addListener((o, a, v) -> { if (fieldErrors.containsKey(fLoc) && fieldErrors.get(fLoc).isVisible()) validate(false); });
         applyShadow(mapPanel);
         HBox.setHgrow(rightSide, Priority.ALWAYS);
         VBox.setVgrow(mapPanel, Priority.ALWAYS);
@@ -164,7 +165,7 @@ public class AddTreeDialog extends Stage {
 
         actions.getChildren().addAll(btnCancel, btnSave);
 
-        rightSide.getChildren().addAll(lblMapTitle, lblMapWarning, mapPanel, createLabel("Coordinates"), fLoc, actions);
+        rightSide.getChildren().addAll(lblMapTitle, lblMapWarning, mapPanel, createLabel("Coordinates"), fLoc, errorLabel(fLoc), actions);
 
         root.getChildren().addAll(leftSide, rightSide);
 
@@ -186,10 +187,91 @@ public class AddTreeDialog extends Stage {
     private TextField createField(String prompt) {
         TextField f = new TextField();
         f.setPromptText(prompt);
-        f.setStyle("-fx-background-color: transparent; -fx-border-color: transparent transparent #CCC transparent; -fx-padding: 5 0 5 0;");
-        f.focusedProperty().addListener((_, _, newVal) ->
-                f.setStyle("-fx-background-color: transparent; -fx-border-color: transparent transparent " + (newVal ? COLOR_LEAF : "#CCC") + " transparent;"));
+        styleField(f, false, false);
+        f.focusedProperty().addListener((_, _, focused) -> {
+            if (!focused && !f.getText().isEmpty()) validate(false); // check a field as soon as the user leaves it
+            styleField(f, focused, errorFor(f) != null && errorFor(f).isVisible());
+        });
         return f;
+    }
+
+    private void styleField(TextField f, boolean focused, boolean invalid) {
+        String line = invalid ? "#9D2235" : focused ? COLOR_LEAF : "#CCC";
+        f.setStyle("-fx-background-color: transparent; -fx-border-color: transparent transparent " + line + " transparent;"
+                + " -fx-border-width: 0 0 " + (invalid || focused ? 2 : 1) + " 0; -fx-padding: 5 0 5 0;");
+    }
+
+    // ---- inline validation: one message under each field instead of pop-up dialogs
+    private final java.util.Map<TextField, Label> fieldErrors = new java.util.HashMap<>();
+
+    private Label errorLabel(TextField f) {
+        Label l = new Label();
+        l.setStyle("-fx-text-fill: #9D2235; -fx-font-size: 11.5px;");
+        l.setWrapText(true);
+        l.setVisible(false);
+        l.setManaged(false);
+        fieldErrors.put(f, l);
+        return l;
+    }
+
+    private Label errorFor(TextField f) {
+        return fieldErrors.get(f);
+    }
+
+    private boolean setError(TextField f, String message) {
+        Label l = fieldErrors.get(f);
+        boolean bad = message != null;
+        if (l != null) {
+            l.setText(bad ? message : "");
+            l.setVisible(bad);
+            l.setManaged(bad);
+        }
+        styleField(f, f.isFocused(), bad);
+        return !bad;
+    }
+
+    /**
+     * Checks every field and shows a message under each problem. With {@code all=false} (on leaving a field) empty
+     * fields are not flagged yet, so the user isn't scolded before they had a chance to type.
+     */
+    private boolean validate(boolean all) {
+        boolean ok = true;
+        String sp = fSpecies.getText().trim();
+        ok &= setError(fSpecies, sp.isEmpty() ? (all ? "Enter the species (common or scientific name)." : null)
+                : sp.length() > 80 ? "Keep the species name under 80 characters." : null);
+        String loc = fLoc.getText().trim();
+        boolean hasLatLon = GeoCoordFormat.tryParse(loc) != null;
+        boolean needPin = loc.isEmpty() || loc.toLowerCase(Locale.ROOT).contains("select from map") || (treeToEdit == null && !hasLatLon);
+        ok &= setError(fLoc, needPin ? (all ? "Click the map to pin where the tree was planted." : null) : null);
+        ok &= setError(fHeight, numberProblem(fHeight.getText(), "Height", 0.05, 120, "m", all));
+        ok &= setError(fDia, numberProblem(fDia.getText(), "Diameter", 0.1, 1500, "cm", all));
+        String date = fDate.getText().trim();
+        String dateErr = null;
+        if (date.isEmpty()) dateErr = all ? "Enter the planting date (YYYY-MM-DD)." : null;
+        else {
+            try {
+                LocalDate d = LocalDate.parse(date);
+                if (d.isAfter(LocalDate.now())) dateErr = "The planting date can't be in the future.";
+                else if (d.getYear() < 1800) dateErr = "Check the year of the planting date.";
+            } catch (java.time.DateTimeException ex) {
+                dateErr = "Use the format YYYY-MM-DD, for example " + LocalDate.now() + ".";
+            }
+        }
+        ok &= setError(fDate, dateErr);
+        return ok;
+    }
+
+    private static String numberProblem(String raw, String name, double min, double max, String unit, boolean all) {
+        String t = raw == null ? "" : raw.trim();
+        if (t.isEmpty()) return all ? "Enter the " + name.toLowerCase(Locale.ROOT) + " in " + unit + "." : null;
+        try {
+            double v = Double.parseDouble(t);
+            if (!Double.isFinite(v) || v <= 0) return name + " must be a positive number.";
+            if (v < min || v > max) return name + " should be between " + min + " and " + (int) max + " " + unit + ".";
+            return null;
+        } catch (NumberFormatException e) {
+            return name + " must be a number, for example 2.5.";
+        }
     }
 
     private Label createLabel(String text) {
@@ -260,43 +342,26 @@ public class AddTreeDialog extends Stage {
     }
 
     private void performSave() {
-        try {
-            String loc = fLoc.getText().trim();
-            String locLower = loc.toLowerCase(Locale.ROOT);
-            if (fSpecies.getText().trim().isEmpty() || loc.isEmpty() || locLower.contains("select from map")) {
-                showAlert(Alert.AlertType.WARNING, "Survey Incomplete", "Species and a pinned map location are required.");
-                return;
+        if (!validate(true)) {
+            // Focus the first problem so the user can fix it straight away.
+            for (TextField f : java.util.List.of(fSpecies, fHeight, fDia, fDate)) {
+                Label l = fieldErrors.get(f);
+                if (l != null && l.isVisible()) { f.requestFocus(); break; }
             }
-            boolean hasLatLon = GeoCoordFormat.tryParse(loc) != null;
-            if (treeToEdit == null && !hasLatLon) {
-                showAlert(Alert.AlertType.WARNING, "Survey Incomplete",
-                        "Pin a location on the map so coordinates are saved as latitude, longitude.");
-                return;
-            }
-            double h = Double.parseDouble(fHeight.getText());
-            double d = Double.parseDouble(fDia.getText());
-
-            if (!Double.isFinite(h) || !Double.isFinite(d) || h <= 0 || d <= 0) {
-                showAlert(Alert.AlertType.WARNING, "Check measurements", "Height and diameter must be positive numbers.");
-                return;
-            }
-            try { LocalDate.parse(fDate.getText().trim()); }
-            catch (java.time.DateTimeException ex) {
-                showAlert(Alert.AlertType.WARNING, "Planted date", "Use a valid date in YYYY-MM-DD format.");
-                return;
-            }
-            resultTree = new Tree(
-                    (treeToEdit != null) ? treeToEdit.id : 0,
-                    fSpecies.getText(), loc, h, d,
-                    fDate.getText().trim(), fStatus.getValue(), fNotes.getText(),
-                    imageDirty ? currentImageBytes : (treeToEdit != null ? treeToEdit.imageBytes : null),
-                    ownerUsername
-            );
-            if (!imageDirty) resultTree.imagePath = existingImagePath;
-            close();
-        } catch (NumberFormatException ex) {
-            showAlert(Alert.AlertType.ERROR, "Invalid Data", "Check numeric values for height and diameter.");
+            return;
         }
+        String loc = fLoc.getText().trim();
+        double h = Double.parseDouble(fHeight.getText().trim());
+        double d = Double.parseDouble(fDia.getText().trim());
+        resultTree = new Tree(
+                (treeToEdit != null) ? treeToEdit.id : 0,
+                fSpecies.getText().trim(), loc, h, d,
+                fDate.getText().trim(), fStatus.getValue(), fNotes.getText(),
+                imageDirty ? currentImageBytes : (treeToEdit != null ? treeToEdit.imageBytes : null),
+                ownerUsername
+        );
+        if (!imageDirty) resultTree.imagePath = existingImagePath;
+        close();
     }
 
     public Tree getTree() { return resultTree; }
