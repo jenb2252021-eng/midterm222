@@ -71,7 +71,6 @@ public class TreeDashboard extends Stage {
     private final Label connection = new Label("Connecting.");
     private final List<Timeline> timers = new ArrayList<>();
     private BorderPane statsWrapper;
-    private TextArea logArea;
     private TextField txtSearch;
     private ComboBox<String> statusFilter;
     private final ContextMenu searchSuggestionsPopup = new ContextMenu();
@@ -79,7 +78,6 @@ public class TreeDashboard extends Stage {
     private int highlightedSuggestionIndex = -1;
 
     // Admin/Notification Components
-    private Label lblServerStatus;
     private Timeline inventoryRefreshTimer;
     private Label pendingBadgeLabel;
     private Label chatBadgeLabel;
@@ -94,6 +92,8 @@ public class TreeDashboard extends Stage {
         t.setDaemon(true);
         return t;
     });
+
+    private AdminPages adminPages;
 
     private final ExecutorService dataExecutor = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "TreeDataFetch");
@@ -126,6 +126,9 @@ public class TreeDashboard extends Stage {
             throw new RuntimeException("Failed to lookup RMI services: " + e.getMessage(), e);
         }
 
+        adminPages = new AdminPages(treeService, userService, adminService, chatService, username, sessionToken,
+                dataExecutor, this::resolveDisplayName, this::loadInitialData, this::fetchAndShowPending,
+                this::openMessagesWith, u -> cachedTrees.stream().filter(t -> u.equals(t.ownerUsername)).count());
         setTitle("The Lorax · Forest Registry · " + (isAdmin ? "Admin" : "Ranger"));
         setMinWidth(760);
         setMinHeight(700);
@@ -146,6 +149,14 @@ public class TreeDashboard extends Stage {
         });
         setScene(scene);
         widthProperty().addListener((o, a, w) -> { if (!compactManual) setCompactSidebar(w.doubleValue() < 1150); });
+        // Smooth page transitions: each workspace page fades in.
+        workspace.centerProperty().addListener((o, old, page) -> {
+            if (page == null || page == old) return;
+            page.setOpacity(0);
+            javafx.animation.FadeTransition fade = new javafx.animation.FadeTransition(Duration.millis(160), page);
+            fade.setToValue(1);
+            fade.play();
+        });
 
         setOnCloseRequest(_ -> {
             try { userService.signOut(sessionToken); } catch (Exception ignored) {}
@@ -369,7 +380,7 @@ public class TreeDashboard extends Stage {
 
     private VBox sidebar(BorderPane root) {
         VBox side = new VBox(5);
-        side.setPrefWidth(200);
+        side.setPrefWidth(216);
         side.setMinWidth(Region.USE_PREF_SIZE);
         side.getStyleClass().add("sidebar");
         sidebarBox = side;
@@ -411,20 +422,9 @@ public class TreeDashboard extends Stage {
             Button pending = nav("Pending Review", this::fetchAndShowPending);
             pendingBadgeLabel = new Label(); configureBadgeLabel(pendingBadgeLabel); pending.setGraphic(new HBox(4, RegistryStyle.navIcon("Pending Review"), pendingBadgeLabel));
             adminBox.getChildren().addAll(pending, nav("Manage Users", this::openAccountManager),
-                    nav("Archive", this::fetchAndShowDeleted), nav("Ranger Access", () -> {
-                        root.setCenter(new VBox(18, RegistryStyle.heading("Ranger Access"), createServerControlPanel()));
-                        fetchServerStatusOnBackground();
-                    }), nav("System States", () -> {
-                        BorderPane panel = createActivityLogPanel();
-                        panel.setTop(RegistryStyle.heading("System States"));
-                        root.setCenter(panel);
-                        dataExecutor.execute(() -> {
-                            try {
-                                String logs = String.join("\n", adminService.getActivityLog(sessionToken));
-                                Platform.runLater(() -> logArea.setText(logs));
-                            } catch (Exception ex) { handleRemoteFailure(ex, "Activity log"); }
-                        });
-                    }));
+                    nav("Archive", this::fetchAndShowDeleted),
+                    nav("Ranger Access", () -> root.setCenter(adminPages.rangerAccess())),
+                    nav("System States", () -> root.setCenter(adminPages.systemLog())));
         }
         if (!isAdmin) side.getChildren().add(nav("My submissions", () -> {
             ListView<String> submissions = new ListView<>();
@@ -484,7 +484,7 @@ public class TreeDashboard extends Stage {
     private void setCompactSidebar(boolean compact) {
         if (sidebarBox == null) return;
         compactSidebar = compact;
-        sidebarBox.setPrefWidth(compact ? 72 : 200);
+        sidebarBox.setPrefWidth(compact ? 72 : 216);
         if (brandText != null) { brandText.setVisible(!compact); brandText.setManaged(!compact); }
         for (Node c : sidebarCaptions) { c.setVisible(!compact); c.setManaged(!compact); }
         for (Button b : navButtons) b.setContentDisplay(compact ? ContentDisplay.GRAPHIC_ONLY : ContentDisplay.LEFT);
@@ -1487,24 +1487,23 @@ public class TreeDashboard extends Stage {
 
     // --- Dialog/Service Helpers ---
     private void openAccountManager() {
-        workspace.setCenter(new TreeDialogs.AccountManagerDialog(this, userService, username, sessionToken, this::handleRemoteFailure, RIVER_BLUE, DELETE_RED, PANEL_DARK));
+        workspace.setCenter(adminPages.users());
     }
     private void openProfileDialog() {
         workspace.setCenter(new TreeDialogs.ProfileDialog(this, userService, username, sessionToken, SDG_GREEN, PANEL_DARK, RIVER_BLUE));
     }
     void openMembersDialog() {
-        MembersDialog members = new MembersDialog(this, chatService, username, sessionToken, dataExecutor,
-                this::resolveDisplayName, this::openChat, PANEL_DARK, RIVER_BLUE);
-        messagesPane = new SplitPane(members, new StackPane(new Label("Select a member to open a conversation.")));
-        messagesPane.setDividerPositions(0.36);
+        messagesPane = new MessagesView(chatService, userService, username, sessionToken, isAdmin, dataExecutor, this::resolveDisplayName);
         workspace.setCenter(messagesPane);
     }
 
-    private void openChat(String peer) {
-        ChatDialog chat = new ChatDialog(this, peer, username, sessionToken, isAdmin, chatService,
-                userService, dataExecutor, PANEL_DARK, RIVER_BLUE, SDG_GREEN);
-        messagesPane.getItems().set(1, chat);
+    /** Opens Messages straight into a conversation (used by Manage Users). */
+    private void openMessagesWith(String user) {
+        for (Button b : navButtons) if ("Messages".equals(b.getText())) selectNav(b);
+        openMembersDialog();
+        ((MessagesView) messagesPane).openConversation(user);
     }
+
     private String resolveDisplayName(String u) {
         if (displayNameCache.containsKey(u)) return displayNameCache.get(u);
         try {
@@ -1515,55 +1514,14 @@ public class TreeDashboard extends Stage {
     }
     private boolean canModifyTree(Tree t) { return isAdmin || (t.ownerUsername != null && t.ownerUsername.equals(username)); }
 
-    private BorderPane createServerControlPanel() {
-        BorderPane p = new BorderPane(); p.setStyle("-fx-background-color: white; -fx-background-radius: 10; -fx-padding: 15;");
-        lblServerStatus = new Label("Checking link...");
-        Button btnOn = new Button("Enable sign-in"); styleButton(btnOn, SDG_GREEN);
-        btnOn.setOnAction(_ -> runServerCommand("SERVER_START"));
-        Button btnOff = new Button("Pause sign-in"); styleButton(btnOff, DELETE_RED);
-        btnOff.setOnAction(_ -> runServerCommand("SERVER_STOP"));
-        HBox c = new HBox(10, lblServerStatus, btnOn, btnOff); c.setAlignment(Pos.CENTER_LEFT);
-        p.setCenter(c); return p;
-    }
-
-    private void fetchServerStatusOnBackground() {
-        serverControlExecutor.execute(() -> {
-            try {
-                String s = adminService.getServerStatus();
-                Platform.runLater(() -> lblServerStatus.setText("STATUS_ON".equals(s) ? "Ranger sign-in enabled" : "Ranger sign-in paused"));
-            } catch (Exception e) {
-                Platform.runLater(() -> lblServerStatus.setText("Status: Disconnected"));
-            }
-        });
-    }
-
-    private void runServerCommand(String cmd) {
-        serverControlExecutor.execute(() -> {
-            try {
-                if ("SERVER_START".equals(cmd)) adminService.enableServerLogin(sessionToken);
-                else adminService.disableServerLogin(sessionToken);
-                fetchServerStatusOnBackground();
-            } catch (Exception e) { handleRemoteFailure(e, "Command Failed"); }
-        });
-    }
-
-    private BorderPane createActivityLogPanel() {
-        BorderPane p = new BorderPane(); p.setStyle("-fx-background-color: white; -fx-background-radius: 10; -fx-padding: 10;");
-        logArea = new TextArea(); logArea.setEditable(false); logArea.setStyle("-fx-font-family: 'Monospace'; -fx-font-size: 11px;");
-        p.setCenter(logArea); return p;
-    }
-
     private void fetchAndShowDeleted() {
-        try {
-            ArrayList<Tree> d = treeService.getDeletedTrees(sessionToken);
-            workspace.setCenter(new TreeDialogs.DeletedTreesDialog(this, d, PANEL_DARK));
-        } catch (Exception e) { e.printStackTrace(); }
+        workspace.setCenter(adminPages.archive());
     }
 
     private void fetchAndShowPending() {
         try {
             ArrayList<Tree> p = treeService.getPendingTrees(sessionToken);
-            workspace.setCenter(new TreeDialogs.PendingTreesDialog(this, p, treeService, username, sessionToken, this::resolveDisplayName, this::handleRemoteFailure, this::loadInitialData, this::fetchAndShowPending, () -> {}, RIVER_BLUE, PANEL_DARK, SDG_GREEN, DELETE_RED));
+            workspace.setCenter(adminPages.pending(p));
         } catch (Exception e) { handleRemoteFailure(e, "Pending Load Failed"); }
     }
 

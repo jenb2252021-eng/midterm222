@@ -252,6 +252,23 @@ public class ChatJSONUtil {
         }
     }
 
+    /** Unread messages for {@code username}, counted per sender. */
+    public static java.util.HashMap<String, Integer> getUnreadCountsBySender(String username) {
+        java.util.HashMap<String, Integer> counts = new java.util.HashMap<>();
+        String user = (username == null) ? "" : username.trim();
+        if (user.isEmpty()) return counts;
+        lock.readLock().lock();
+        try {
+            for (ChatMessage m : messages) {
+                if (m.deleted || !user.equals(m.recipient) || m.readByRecipient || m.sender == null) continue;
+                counts.merge(m.sender, 1, Integer::sum);
+            }
+        } finally {
+            lock.readLock().unlock();
+        }
+        return counts;
+    }
+
     public static int getUnreadCount(String username) {
         String user = (username == null) ? "" : username.trim();
         if (user.isEmpty()) return 0;

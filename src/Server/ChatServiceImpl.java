@@ -164,6 +164,12 @@ public class ChatServiceImpl extends UnicastRemoteObject implements ChatService 
     }
 
     @Override
+    public java.util.HashMap<String, Integer> getUnreadCountsBySender(String sessionToken) throws RemoteException {
+        String username = SessionManager.identity(sessionToken);
+        return ChatJSONUtil.getUnreadCountsBySender(username);
+    }
+
+    @Override
     public int getUnreadCount(String sessionToken) throws RemoteException {
         String username = SessionManager.identity(sessionToken);
         return ChatJSONUtil.getUnreadCount(username);

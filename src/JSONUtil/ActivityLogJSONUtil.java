@@ -88,6 +88,9 @@ public class ActivityLogJSONUtil {
                 case "DELETE_TREE" -> {
                     if (mentionsId) event = "Removed from the inventory (archived)";
                 }
+                case "RESTORE_TREE" -> {
+                    if (mentionsId) event = "Restored from the archive";
+                }
                 default -> { }
             }
             if (event != null) {

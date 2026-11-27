@@ -235,6 +235,44 @@ public class TreeServiceImpl extends UnicastRemoteObject implements TreeService 
     }
 
     @Override
+    public String restoreDeletedTree(int treeId, String sessionToken) throws RemoteException {
+        String username = SessionManager.identity(sessionToken);
+        if (!"admin".equals(username)) return "ERROR: Access Denied. Admins only.";
+        treeLock.writeLock().lock();
+        try {
+            if (TreeJSONUtil.getTreeById(treeId) != null) return "ERROR: A tree with ID " + treeId + " is already in the inventory.";
+            Tree t = DeletedTreeJSONUtil.removeDeletedTree(treeId);
+            if (t == null) return "ERROR: Archived tree not found";
+            t.imagePath = null; // the photo is re-stored with the active record
+            String result = TreeJSONUtil.addTreeWithId(t);
+            if (!result.startsWith("SUCCESS")) {
+                DeletedTreeJSONUtil.addDeletedTree(t); // put it back so nothing is lost
+                return result;
+            }
+            ActivityLogJSONUtil.log(username, "RESTORE_TREE", "Restored Tree ID: " + treeId + " (" + t.species + ")");
+            return "SUCCESS: Tree #" + treeId + " restored to the inventory";
+        } finally {
+            treeLock.writeLock().unlock();
+        }
+    }
+
+    @Override
+    public String purgeDeletedTree(int treeId, String sessionToken) throws RemoteException {
+        String username = SessionManager.identity(sessionToken);
+        if (!"admin".equals(username)) return "ERROR: Access Denied. Admins only.";
+        treeLock.writeLock().lock();
+        try {
+            Tree t = DeletedTreeJSONUtil.removeDeletedTree(treeId);
+            if (t == null) return "ERROR: Archived tree not found";
+            storage.ImageStorage.deleteImage(storage.ImageStorage.portableDeletedImagePath(treeId));
+            ActivityLogJSONUtil.log(username, "PURGE_TREE", "Permanently deleted archived Tree ID: " + treeId + " (" + t.species + ")");
+            return "SUCCESS: Tree #" + treeId + " permanently deleted";
+        } finally {
+            treeLock.writeLock().unlock();
+        }
+    }
+
+    @Override
     public ArrayList<String> getTreeHistory(int treeId, String sessionToken) throws RemoteException {
         SessionManager.identity(sessionToken);
         treeLock.readLock().lock();
