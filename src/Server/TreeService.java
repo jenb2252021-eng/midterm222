@@ -87,4 +87,12 @@ public interface TreeService extends Remote {
      * @return Success or error message
      */
     String rejectPendingTree(int pendingId, String sessionToken) throws RemoteException;
+
+    /**
+     * Monitoring history of one registered tree, built from the server activity log
+     * (registration, review, measurement and status updates). Available to any signed-in user.
+     * @param treeId The tree ID
+     * @return Lines formatted as {@code "yyyy-MM-dd HH:mm | user | event"}, newest first
+     */
+    ArrayList<String> getTreeHistory(int treeId, String sessionToken) throws RemoteException;
 }

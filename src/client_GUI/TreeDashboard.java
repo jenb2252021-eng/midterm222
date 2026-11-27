@@ -20,6 +20,9 @@ import javafx.scene.input.KeyCode;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
+import javafx.scene.shape.SVGPath;
+import javafx.scene.chart.*;
+import javafx.scene.Node;
 import javafx.scene.text.Text;
 import javafx.stage.Stage;
 import javafx.stage.Window;
@@ -31,6 +34,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.rmi.registry.Registry;
 import java.util.*;
+import java.util.Map;
+import java.util.LinkedHashMap;
 import java.util.concurrent.ExecutorService;
 
 import storage.ImageStorage;
@@ -58,6 +63,9 @@ public class TreeDashboard extends Stage {
     private final Label inventoryCount = new Label();
     private Button selectedNav;
     private Button registryButton;
+    private Button map3dButton;
+    /** 3D Forest Map; created on first use and kept so camera and selection survive navigation. */
+    private TreeMap3D map3d;
     private final Label onlineUsers = new Label();
     private final Button reconnect = new Button("Reconnect");
     private final Label connection = new Label("Connecting.");
@@ -119,7 +127,7 @@ public class TreeDashboard extends Stage {
         }
 
         setTitle("The Lorax · Forest Registry · " + (isAdmin ? "Admin" : "Ranger"));
-        setMinWidth(1000);
+        setMinWidth(760);
         setMinHeight(700);
 
         BorderPane root = workspace;
@@ -134,8 +142,10 @@ public class TreeDashboard extends Stage {
             timers.forEach(Timeline::stop);
             inventoryRefreshTimer.stop();
             if (activeUsersTimer != null) activeUsersTimer.stop();
+            if (map3d != null) map3d.dispose();
         });
         setScene(scene);
+        widthProperty().addListener((o, a, w) -> { if (!compactManual) setCompactSidebar(w.doubleValue() < 1150); });
 
         setOnCloseRequest(_ -> {
             try { userService.signOut(sessionToken); } catch (Exception ignored) {}
@@ -150,12 +160,10 @@ public class TreeDashboard extends Stage {
 
     private void initSearchField() {
         txtSearch = new TextField();
-        txtSearch.setPrefWidth(300);
-        txtSearch.setPrefHeight(35);
+        txtSearch.setPrefWidth(320);
+        txtSearch.setPrefHeight(38);
         txtSearch.setPromptText("Search trees, species, or ID");
-        // Sage Green
-        String LEAF_LIGHT = "#A3B18A";
-        txtSearch.setStyle("-fx-background-radius: 15; -fx-border-color: " + LEAF_LIGHT + "; -fx-border-radius: 15; -fx-background-color: white;");
+        txtSearch.getStyleClass().add("search-field");
         searchSuggestionsPopup.setAutoHide(true);
         searchSuggestionsPopup.setHideOnEscape(true);
         txtSearch.textProperty().addListener((obs, oldText, newText) -> {
@@ -208,9 +216,13 @@ public class TreeDashboard extends Stage {
         String queryLower = query.toLowerCase(Locale.ROOT);
         String numericQuery = normalizeNumericQuery(query);
         String statusChoice = statusFilter != null ? statusFilter.getValue() : "All statuses";
+        String sort = sortChoice == null ? SORTS[0] : sortChoice.getValue();
+        String key = query + "|" + statusChoice + "|" + yearFilter + "|" + sort;
+        if (!key.equals(lastFilterKey)) { page = 0; lastFilterKey = key; }
         List<Tree> filtered = cachedTrees.stream()
                 .filter(t -> "All statuses".equals(statusChoice)
-                        || (t.status != null && t.status.equalsIgnoreCase(statusChoice)))
+                        || (t.status != null && normalizeStatus(t.status).equalsIgnoreCase(statusChoice)))
+                .filter(t -> yearFilter == null || yearFilter.equals(plantedYear(t)))
                 .filter(t -> {
                     if (query.isEmpty()) {
                         return true;
@@ -221,8 +233,41 @@ public class TreeDashboard extends Stage {
                     boolean idMatch = !numericQuery.isEmpty() && idText.contains(numericQuery);
                     return speciesMatch || idMatch;
                 })
+                .sorted(comparatorFor(sort))
                 .collect(Collectors.toList());
         renderTreeList(filtered);
+    }
+
+    private static final String[] SORTS = {"Newest first", "Species A–Z", "Tallest first",
+            "Needs attention first", "Recently planted", "Oldest planted"};
+
+    private static Comparator<Tree> comparatorFor(String sort) {
+        Comparator<Tree> byId = Comparator.comparingInt((Tree t) -> t.id).reversed();
+        if (sort == null) return byId;
+        return switch (sort) {
+            case "Species A–Z" -> Comparator.comparing((Tree t) -> t.species == null ? "" : t.species.toLowerCase(Locale.ROOT)).thenComparing(byId);
+            case "Tallest first" -> Comparator.comparingDouble((Tree t) -> t.height).reversed().thenComparing(byId);
+            case "Needs attention first" -> Comparator.comparingInt((Tree t) -> attentionRank(t.status)).thenComparing(byId);
+            case "Recently planted" -> Comparator.comparing((Tree t) -> t.plantedDate == null ? "" : t.plantedDate).reversed().thenComparing(byId);
+            case "Oldest planted" -> Comparator.comparing((Tree t) -> t.plantedDate == null || t.plantedDate.isBlank() ? "9999" : t.plantedDate).thenComparing(byId);
+            default -> byId;
+        };
+    }
+
+    /** Destroyed and at-risk trees first, healthy last. */
+    private static int attentionRank(String status) {
+        return switch (normalizeStatus(status)) {
+            case "At Risk" -> 0;
+            case "Destroyed" -> 1;
+            case "Monitoring" -> 2;
+            case "Healthy" -> 4;
+            default -> 3;
+        };
+    }
+
+    private static Integer plantedYear(Tree t) {
+        if (t.plantedDate == null || t.plantedDate.length() < 4) return null;
+        try { return Integer.parseInt(t.plantedDate.substring(0, 4)); } catch (NumberFormatException e) { return null; }
     }
 
     private String normalizeNumericQuery(String rawQuery) {
@@ -324,22 +369,48 @@ public class TreeDashboard extends Stage {
 
     private VBox sidebar(BorderPane root) {
         VBox side = new VBox(5);
-        side.setPrefWidth(192);
+        side.setPrefWidth(200);
+        side.setMinWidth(Region.USE_PREF_SIZE);
         side.getStyleClass().add("sidebar");
-        side.getChildren().addAll(RegistryStyle.brand(true), new Separator(), RegistryStyle.caption("WORKSPACE"));
+        sidebarBox = side;
+        HBox brand = RegistryStyle.brand(true);
+        brandText = brand.getChildren().get(1);
+        Button collapse = new Button();
+        SVGPath burger = new SVGPath();
+        burger.setContent("M2 4h14 M2 9h14 M2 14h14");
+        burger.setStyle("-fx-stroke: #42534a; -fx-stroke-width: 1.6; -fx-stroke-line-cap: round;");
+        collapse.setGraphic(burger);
+        collapse.getStyleClass().add("icon-button");
+        collapse.setTooltip(new Tooltip("Collapse or expand the sidebar"));
+        collapse.setOnAction(e -> { compactManual = true; setCompactSidebar(!compactSidebar); });
+        HBox top = new HBox(4, brand, RegistryStyle.spacer(), collapse);
+        top.setAlignment(Pos.CENTER_LEFT);
+        Label workspaceCaption = RegistryStyle.caption("WORKSPACE");
+        sidebarCaptions.add(workspaceCaption);
+        side.getChildren().addAll(top, new Separator(), workspaceCaption);
         registryButton = nav("Registry", this::showRegistry);
         Button messages = nav("Messages", this::openMembersDialog);
-        side.getChildren().addAll(registryButton,
-                nav("Field Map", () -> root.setCenter(FieldMapStage.view(new ArrayList<>(cachedTrees)))),
-                messages, nav("Profile", this::openProfileDialog));
+        map3dButton = nav("3D Map", this::show3DMap);
+        side.getChildren().addAll(registryButton, map3dButton, messages, nav("Profile", this::openProfileDialog));
         chatBadgeLabel = new Label();
         configureBadgeLabel(chatBadgeLabel);
         messages.setGraphic(new HBox(4, RegistryStyle.navIcon("Messages"), chatBadgeLabel));
         if (isAdmin) {
-            side.getChildren().add(RegistryStyle.caption("ADMINISTRATION"));
+            // Expandable section: click the heading to show or hide the administration pages.
+            VBox adminBox = new VBox(5);
+            Button adminHeader = new Button("ADMINISTRATION  ▾");
+            adminHeader.getStyleClass().add("section-toggle");
+            adminHeader.setMaxWidth(Double.MAX_VALUE);
+            adminHeader.setOnAction(e -> {
+                boolean show = !adminBox.isVisible();
+                adminBox.setVisible(show); adminBox.setManaged(show);
+                adminHeader.setText("ADMINISTRATION  " + (show ? "▾" : "▸"));
+            });
+            sidebarCaptions.add(adminHeader);
+            side.getChildren().addAll(adminHeader, adminBox);
             Button pending = nav("Pending Review", this::fetchAndShowPending);
             pendingBadgeLabel = new Label(); configureBadgeLabel(pendingBadgeLabel); pending.setGraphic(new HBox(4, RegistryStyle.navIcon("Pending Review"), pendingBadgeLabel));
-            side.getChildren().addAll(pending, nav("Manage Users", this::openAccountManager),
+            adminBox.getChildren().addAll(pending, nav("Manage Users", this::openAccountManager),
                     nav("Archive", this::fetchAndShowDeleted), nav("Ranger Access", () -> {
                         root.setCenter(new VBox(18, RegistryStyle.heading("Ranger Access"), createServerControlPanel()));
                         fetchServerStatusOnBackground();
@@ -372,12 +443,63 @@ public class TreeDashboard extends Stage {
         reconnect.setManaged(false); reconnect.setVisible(false);
         reconnect.setOnAction(e -> { close(); TreeClient.launchConnection(); });
         side.getChildren().add(space);
+        // Connection status with a live coloured dot.
+        Circle dot = new Circle(4, Color.web("#9aa6a0"));
+        connection.setGraphic(dot);
+        connection.setGraphicTextGap(8);
+        connection.getStyleClass().add("connection-status");
+        connection.textProperty().addListener((o, a, text) -> dot.setFill(Color.web(
+                text != null && text.toLowerCase(Locale.ROOT).contains("online") ? "#2fa36f"
+                        : text != null && text.toLowerCase(Locale.ROOT).contains("unavailable") ? "#c0392b" : "#9aa6a0")));
+        onlineUsers.getStyleClass().add("muted");
         if (isAdmin) side.getChildren().add(onlineUsers);
-        side.getChildren().addAll(connection, reconnect, new Separator(), new Label(username), nav("Sign Out", this::handleSignOut));
+        side.getChildren().addAll(connection, reconnect, new Separator(), userChip(), nav("Sign Out", this::handleSignOut));
         return side;
     }
+
+    /** Avatar initial, name and role at the foot of the sidebar. */
+    private HBox userChip() {
+        String initial = username == null || username.isBlank() ? "?" : username.substring(0, 1).toUpperCase(Locale.ROOT);
+        Label avatar = new Label(initial);
+        avatar.getStyleClass().add("avatar");
+        Label name = new Label(username);
+        name.getStyleClass().add("user-name");
+        Label role = new Label(isAdmin ? "Administrator" : "Ranger");
+        role.getStyleClass().add("muted");
+        HBox chip = new HBox(10, avatar, new VBox(1, name, role));
+        chip.setAlignment(Pos.CENTER_LEFT);
+        chip.getStyleClass().add("user-chip");
+        userChipBox = chip;
+        return chip;
+    }
+    private VBox sidebarBox;
+    private Node brandText;
+    private final List<Node> sidebarCaptions = new ArrayList<>();
+    private final List<Button> navButtons = new ArrayList<>();
+    private HBox userChipBox;
+    private boolean compactSidebar = false;
+    private boolean compactManual = false;
+
+    /** Icon-only sidebar for narrow windows (or on demand); every item keeps a tooltip with its name. */
+    private void setCompactSidebar(boolean compact) {
+        if (sidebarBox == null) return;
+        compactSidebar = compact;
+        sidebarBox.setPrefWidth(compact ? 72 : 200);
+        if (brandText != null) { brandText.setVisible(!compact); brandText.setManaged(!compact); }
+        for (Node c : sidebarCaptions) { c.setVisible(!compact); c.setManaged(!compact); }
+        for (Button b : navButtons) b.setContentDisplay(compact ? ContentDisplay.GRAPHIC_ONLY : ContentDisplay.LEFT);
+        connection.setContentDisplay(compact ? ContentDisplay.GRAPHIC_ONLY : ContentDisplay.LEFT);
+        onlineUsers.setVisible(!compact); onlineUsers.setManaged(!compact && isAdmin);
+        if (userChipBox != null && userChipBox.getChildren().size() > 1) {
+            Node text = userChipBox.getChildren().get(1);
+            text.setVisible(!compact); text.setManaged(!compact);
+        }
+    }
+
     private Button nav(String text, Runnable action) {
         Button b = new Button(text); b.setGraphic(RegistryStyle.navIcon(text)); b.setGraphicTextGap(10);
+        b.setTooltip(new Tooltip(text));
+        navButtons.add(b);
         b.getStyleClass().add("nav"); b.setMaxWidth(Double.MAX_VALUE);
         b.setOnAction(e -> {
             if (!text.equals("Sign Out")) selectNav(b);
@@ -392,33 +514,500 @@ public class TreeDashboard extends Stage {
     }
     void showRegistry() { selectNav(registryButton); workspace.setCenter(inventory()); }
 
+    // ---------------------------------------------------------------- 3D Forest Map integration
+
+    private void show3DMap() {
+        selectNav(map3dButton);
+        if (map3d == null) {
+            map3d = new TreeMap3D(new ArrayList<>(cachedTrees), new TreeMap3D.Host() {
+                @Override public boolean canEdit(Tree t) { return canModifyTree(t); }
+                @Override public void openRecord(Tree t) {
+                    hydrateTreeImageLocal(t);
+                    new TreeDialogs.TreeDetailDialog(TreeDashboard.this, t, TreeDashboard.this::canModifyTree,
+                            TreeDashboard.this::editTree, SDG_GREEN, RIVER_BLUE, PANEL_DARK).showAndWait();
+                }
+                @Override public void editRecord(Tree t) { editTree(t); }
+                @Override public void showInRegistry(Tree t) { showTreeInRegistry(t); }
+                @Override public List<String> loadHistory(int treeId) throws Exception {
+                    return treeService.getTreeHistory(treeId, sessionToken);
+                }
+            });
+        } else {
+            map3d.setTrees(new ArrayList<>(cachedTrees));
+        }
+        workspace.setCenter(map3d);
+    }
+
+    /** Opens the 3D map and flies to one tree (used by the registry cards). */
+    private void locateIn3D(Tree t) {
+        show3DMap();
+        Platform.runLater(() -> map3d.focusTree(t.id));
+    }
+
+    /** Selection sync from the map back to the registry: filter the inventory to this tree. */
+    private void showTreeInRegistry(Tree t) {
+        showRegistry();
+        statusFilter.setValue("All statuses");
+        txtSearch.setText(String.valueOf(t.id));
+        searchSuggestionsPopup.hide();
+    }
+
+    private final Map<String, ToggleButton> filterChips = new LinkedHashMap<>();
+    private ComboBox<String> sortChoice;
+    private Integer yearFilter;
+    private String lastFilterKey = "";
+    private int page = 0;
+    private static final int PAGE_SIZE = 12;
+    private boolean tableView = false;
+    private boolean firstLoadDone = false;
+    private TableView<Tree> inventoryTable;
+    private final HBox pager = new HBox(6);
+    private final HBox activeFilters = new HBox(8);
+    private final VBox insightsBox = new VBox();
+    private String insightsSignature = "";
+    private final Label lastUpdated = new Label("Connecting…");
+    private StackPane inventoryHolder;
+    private int cardColumns = 2;
+
     private BorderPane inventory() {
-        VBox heading = new VBox(4, RegistryStyle.heading("Forest Registry"), new Label("Welcome back, " + username + "."));
+        Label welcome = new Label("Welcome back, " + username + ". Here is the state of the forest today.");
+        welcome.getStyleClass().add("muted");
+        Circle live = new Circle(4, Color.web("#2fa36f"));
+        lastUpdated.setGraphic(live);
+        lastUpdated.setGraphicTextGap(6);
+        lastUpdated.getStyleClass().add("live-pill");
+        HBox titleLine = new HBox(12, RegistryStyle.heading("Forest Registry"), lastUpdated);
+        titleLine.setAlignment(Pos.CENTER_LEFT);
+        VBox titles = new VBox(4, titleLine, welcome);
+        Button open3d = RegistryStyle.secondary("View 3D Forest Map", this::show3DMap);
+        open3d.setGraphic(RegistryStyle.navIcon("3D Map"));
+        HBox heading = new HBox(12, titles, RegistryStyle.spacer(), open3d,
+                RegistryStyle.primary("+  Register Sapling", this::addNewTree));
+        heading.setAlignment(Pos.CENTER_LEFT);
         heading.getStyleClass().add("topbar");
         statsWrapper = new BorderPane(); statsWrapper.setTop(createStatsPanel());
-        Label title = new Label("Tree inventory"); title.setStyle("-fx-font-size: 18px;");
-        HBox toolbar = new HBox(10, new VBox(4, title, inventoryCount), RegistryStyle.spacer(),
-                RegistryStyle.primary("+  Register Sapling", this::addNewTree));
+
+        // Insights: live charts built from the registry records; clicking a chart filters the inventory.
+        TitledPane insights = new TitledPane("Forest insights", insightsBox);
+        insights.getStyleClass().add("insights");
+        insights.setExpanded(true);
+        insightsSignature = "";
+        refreshInsights();
+
+        Label title = new Label("Tree inventory"); title.getStyleClass().add("section-title");
+        inventoryCount.getStyleClass().add("muted");
+        HBox titleRow = new HBox(10, title, inventoryCount);
+        titleRow.setAlignment(Pos.BASELINE_LEFT);
+
+        SVGPath glass = new SVGPath();
+        glass.setContent("M7 1a6 6 0 1 0 3.9 10.6l3.8 3.8 1.1-1.1-3.8-3.8A6 6 0 0 0 7 1zm0 1.6a4.4 4.4 0 1 1 0 8.8 4.4 4.4 0 0 1 0-8.8z");
+        glass.setStyle("-fx-fill: #7c8a82;");
+        glass.setMouseTransparent(true);
+        StackPane searchBox = new StackPane(txtSearch, glass);
+        StackPane.setAlignment(glass, Pos.CENTER_LEFT);
+        StackPane.setMargin(glass, new Insets(0, 0, 0, 12));
+        searchBox.setMaxWidth(320);
+
+        sortChoice = new ComboBox<>(FXCollections.observableArrayList(SORTS));
+        sortChoice.setValue(SORTS[0]);
+        sortChoice.getStyleClass().add("sort-box");
+        sortChoice.setTooltip(new Tooltip("Sort the inventory"));
+        sortChoice.valueProperty().addListener((o, a, v) -> performSearch());
+        Label sortLabel = new Label("Sort");
+        sortLabel.getStyleClass().add("muted");
+
+        ToggleGroup views = new ToggleGroup();
+        ToggleButton grid = new ToggleButton("Cards");
+        ToggleButton table = new ToggleButton("Table");
+        grid.setGraphic(RegistryStyle.navIcon("Registry"));
+        table.setGraphic(RegistryStyle.navIcon("Table"));
+        for (ToggleButton b : List.of(grid, table)) { b.setToggleGroup(views); b.getStyleClass().add("segment"); }
+        grid.getStyleClass().add("segment-left");
+        table.getStyleClass().add("segment-right");
+        (tableView ? table : grid).setSelected(true);
+        views.selectedToggleProperty().addListener((o, was, now) -> {
+            if (now == null) { was.setSelected(true); return; }
+            tableView = now == table;
+            performSearch();
+        });
+        HBox toolbar = new HBox(10, searchBox, RegistryStyle.spacer(), sortLabel, sortChoice, new HBox(0, grid, table));
         toolbar.setAlignment(Pos.CENTER_LEFT);
-        HBox filters = new HBox(6,txtSearch, RegistryStyle.spacer());
+
+        HBox filters = new HBox(6);
+        filters.setAlignment(Pos.CENTER_LEFT);
         ToggleGroup group = new ToggleGroup();
+        filterChips.clear();
         for (String choice : statusFilter.getItems()) {
             ToggleButton b = new ToggleButton(choice.equals("All statuses") ? "All" : choice);
-            b.setToggleGroup(group); b.getStyleClass().add("nav");
+            b.setToggleGroup(group); b.getStyleClass().add("chip");
+            if (!choice.equals("All statuses")) b.setGraphic(new Circle(4, Color.web(statusAccent(choice))));
             b.setSelected(choice.equals(statusFilter.getValue()));
             b.setOnAction(e -> { b.setSelected(true); statusFilter.setValue(choice); });
+            filterChips.put(choice, b);
             filters.getChildren().add(b);
         }
-        cardContainer = new GridPane(); cardContainer.setHgap(12); cardContainer.setVgap(12);
-        for (int i=0; i<2; i++) {
-            ColumnConstraints col = new ColumnConstraints(); col.setPercentWidth(50); cardContainer.getColumnConstraints().add(col);
-        }
-        VBox body = new VBox(16, statsWrapper, toolbar, filters, cardContainer);
-        body.setPadding(new Insets(22,28,22,28));
+        activeFilters.setAlignment(Pos.CENTER_LEFT);
+        filters.getChildren().addAll(RegistryStyle.spacer(), activeFilters);
+
+        cardContainer = new GridPane(); cardContainer.setHgap(14); cardContainer.setVgap(14);
+        applyCardColumns();
+        inventoryTable = buildInventoryTable();
+        inventoryHolder = new StackPane(cardContainer);
+        pager.setAlignment(Pos.CENTER);
+
+        VBox body = new VBox(18, statsWrapper, insights, titleRow, toolbar, filters, inventoryHolder, pager);
+        body.setPadding(new Insets(24,28,28,28));
         ScrollPane scroll = new ScrollPane(body); scroll.setFitToWidth(true);
-        scroll.setStyle("-fx-background: #f5f7f5; -fx-background-color: transparent;");
+        scroll.getStyleClass().add("page-scroll");
         BorderPane panel = new BorderPane(scroll); panel.setTop(heading);
+        // Responsive card grid: 1, 2 or 3 columns depending on the available width.
+        panel.widthProperty().addListener((o, a, w) -> {
+            int cols = w.doubleValue() < 900 ? 1 : w.doubleValue() > 1500 ? 3 : 2;
+            if (cols != cardColumns) { cardColumns = cols; applyCardColumns(); performSearch(); }
+        });
         performSearch(); return panel;
+    }
+
+    private void applyCardColumns() {
+        if (cardContainer == null) return;
+        cardContainer.getColumnConstraints().clear();
+        for (int i = 0; i < cardColumns; i++) {
+            ColumnConstraints col = new ColumnConstraints(); col.setPercentWidth(100.0 / cardColumns);
+            cardContainer.getColumnConstraints().add(col);
+        }
+    }
+
+    /** Sortable table view of the filtered inventory (all rows; the table scrolls itself). */
+    private TableView<Tree> buildInventoryTable() {
+        TableView<Tree> tv = new TableView<>();
+        tv.getStyleClass().add("inventory-table");
+        tv.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+        tv.setPlaceholder(new Label("No trees match these filters."));
+        tv.setPrefHeight(520);
+        TableColumn<Tree, Number> id = new TableColumn<>("ID");
+        id.setCellValueFactory(c -> new javafx.beans.property.SimpleIntegerProperty(c.getValue().id));
+        id.setMaxWidth(90);
+        TableColumn<Tree, String> species = new TableColumn<>("Species");
+        species.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(c.getValue().species));
+        TableColumn<Tree, String> status = new TableColumn<>("Health");
+        status.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(normalizeStatus(c.getValue().status)));
+        status.setComparator(Comparator.comparingInt(TreeDashboard::attentionRank));
+        status.setCellFactory(col -> new TableCell<>() {
+            @Override protected void updateItem(String v, boolean empty) {
+                super.updateItem(v, empty);
+                if (empty || v == null) { setGraphic(null); setText(null); return; }
+                Label pill = new Label(v, new Circle(4, Color.web(statusAccent(v))));
+                pill.getStyleClass().add("status-pill");
+                pill.setStyle("-fx-text-fill: " + statusAccent(v) + "; -fx-background-color: " + statusAccent(v) + "1A;");
+                setGraphic(pill); setText(null);
+            }
+        });
+        TableColumn<Tree, Number> height = new TableColumn<>("Height (m)");
+        height.setCellValueFactory(c -> new javafx.beans.property.SimpleDoubleProperty(c.getValue().height));
+        TableColumn<Tree, Number> diameter = new TableColumn<>("Trunk (cm)");
+        diameter.setCellValueFactory(c -> new javafx.beans.property.SimpleDoubleProperty(c.getValue().diameter));
+        TableColumn<Tree, String> planted = new TableColumn<>("Planted");
+        planted.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(c.getValue().plantedDate));
+        TableColumn<Tree, String> age = new TableColumn<>("Age");
+        age.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(TreeMap3D.ageText(c.getValue().plantedDate).replace(" since planting", "")));
+        age.setSortable(false);
+        TableColumn<Tree, String> owner = new TableColumn<>("Recorded by");
+        owner.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(c.getValue().ownerUsername));
+        TableColumn<Tree, Tree> actions = new TableColumn<>("Actions");
+        actions.setSortable(false);
+        actions.setMinWidth(230);
+        actions.setCellValueFactory(c -> new javafx.beans.property.SimpleObjectProperty<>(c.getValue()));
+        actions.setCellFactory(col -> new TableCell<>() {
+            @Override protected void updateItem(Tree t, boolean empty) {
+                super.updateItem(t, empty);
+                if (empty || t == null) { setGraphic(null); return; }
+                setGraphic(treeActions(t, true));
+            }
+        });
+        tv.getColumns().addAll(List.of(id, species, status, height, diameter, planted, age, owner, actions));
+        tv.setRowFactory(v -> {
+            TableRow<Tree> row = new TableRow<>();
+            row.setOnMouseClicked(e -> { if (e.getClickCount() == 2 && !row.isEmpty()) openDetails(row.getItem()); });
+            row.itemProperty().addListener((o, a, t) -> row.setContextMenu(t == null ? null : treeMenu(t)));
+            return row;
+        });
+        tv.setOnKeyPressed(e -> {
+            Tree t = tv.getSelectionModel().getSelectedItem();
+            if (t != null && e.getCode() == KeyCode.ENTER) openDetails(t);
+        });
+        return tv;
+    }
+
+    /** View details · View in 3D · Edit · Delete (edit/delete only for records the user may change). */
+    private HBox treeActions(Tree t, boolean compact) {
+        HBox actions = new HBox(6);
+        actions.setAlignment(compact ? Pos.CENTER_LEFT : Pos.CENTER_RIGHT);
+        Button details = new Button("View details");
+        details.getStyleClass().add("card-link");
+        details.setOnAction(e -> { e.consume(); openDetails(t); });
+        actions.getChildren().add(details);
+        if (GeoCoordFormat.tryParse(t.location) != null) {
+            Button btn3d = new Button("View in 3D");
+            btn3d.setGraphic(RegistryStyle.navIcon("3D Map"));
+            btn3d.getStyleClass().add("card-link");
+            btn3d.setTooltip(new Tooltip("Show this tree on the 3D Forest Map"));
+            btn3d.setOnAction(e -> { e.consume(); locateIn3D(t); });
+            actions.getChildren().add(btn3d);
+        }
+        if (canModifyTree(t)) {
+            Button btnEdit = createCardIconButton(editActionIcon, "E", RIVER_BLUE, "Edit");
+            btnEdit.setOnAction(e -> { e.consume(); editTree(t); });
+            Button btnDel = createCardIconButton(deleteActionIcon, "D", DELETE_RED, "Delete");
+            btnDel.setOnAction(e -> { e.consume(); deleteTree(t); });
+            actions.getChildren().addAll(btnEdit, btnDel);
+        }
+        return actions;
+    }
+
+    /** Right-click menu shared by cards and table rows. */
+    private ContextMenu treeMenu(Tree t) {
+        MenuItem details = new MenuItem("View details");
+        details.setOnAction(e -> openDetails(t));
+        MenuItem in3d = new MenuItem("View in 3D map");
+        in3d.setOnAction(e -> locateIn3D(t));
+        in3d.setDisable(GeoCoordFormat.tryParse(t.location) == null);
+        MenuItem copy = new MenuItem("Copy coordinates");
+        copy.setOnAction(e -> {
+            javafx.scene.input.ClipboardContent c = new javafx.scene.input.ClipboardContent();
+            c.putString(t.location == null ? "" : t.location);
+            javafx.scene.input.Clipboard.getSystemClipboard().setContent(c);
+            Toast.info("Coordinates copied: " + t.location);
+        });
+        ContextMenu menu = new ContextMenu(details, in3d, copy);
+        if (canModifyTree(t)) {
+            MenuItem edit = new MenuItem("Edit tree…");
+            edit.setOnAction(e -> editTree(t));
+            MenuItem del = new MenuItem("Delete tree…");
+            del.setOnAction(e -> deleteTree(t));
+            menu.getItems().addAll(new SeparatorMenuItem(), edit, del);
+        }
+        return menu;
+    }
+
+    private void openDetails(Tree t) {
+        hydrateTreeImageLocal(t);
+        new TreeDialogs.TreeDetailDialog(this, t, this::canModifyTree, this::editTree, SDG_GREEN, RIVER_BLUE, PANEL_DARK).showAndWait();
+    }
+
+    /** Filter summary with a one-click "Clear filters". */
+    private void updateActiveFilters(int shown) {
+        activeFilters.getChildren().clear();
+        boolean any = yearFilter != null || !"All statuses".equals(statusFilter.getValue())
+                || (txtSearch.getText() != null && !txtSearch.getText().isBlank());
+        if (yearFilter != null) {
+            Button year = new Button("Planted " + yearFilter + "  ✕");
+            year.getStyleClass().add("chip-removable");
+            year.setOnAction(e -> { yearFilter = null; performSearch(); });
+            activeFilters.getChildren().add(year);
+        }
+        if (any) {
+            Label summary = new Label("Showing " + shown + " of " + cachedTrees.size());
+            summary.getStyleClass().add("muted");
+            Hyperlink clear = new Hyperlink("Clear filters");
+            clear.setOnAction(e -> {
+                yearFilter = null;
+                txtSearch.clear();
+                statusFilter.setValue("All statuses");
+                performSearch();
+            });
+            activeFilters.getChildren().addAll(summary, clear);
+        }
+    }
+
+    /** Page buttons for the card view. */
+    private void updatePager(int total) {
+        pager.getChildren().clear();
+        int pages = Math.max(1, (int) Math.ceil(total / (double) PAGE_SIZE));
+        boolean show = !tableView && pages > 1;
+        pager.setVisible(show);
+        pager.setManaged(show);
+        if (!show) return;
+        Button prev = new Button("‹ Previous");
+        prev.getStyleClass().add("pager-button");
+        prev.setDisable(page == 0);
+        prev.setOnAction(e -> { page--; performSearch(); });
+        pager.getChildren().add(prev);
+        for (int i = 0; i < pages; i++) {
+            int target = i;
+            Button b = new Button(String.valueOf(i + 1));
+            b.getStyleClass().add("pager-button");
+            if (i == page) b.getStyleClass().add("pager-current");
+            b.setOnAction(e -> { page = target; performSearch(); });
+            pager.getChildren().add(b);
+        }
+        Button next = new Button("Next ›");
+        next.getStyleClass().add("pager-button");
+        next.setDisable(page >= pages - 1);
+        next.setOnAction(e -> { page++; performSearch(); });
+        int from = page * PAGE_SIZE + 1, to = Math.min(total, (page + 1) * PAGE_SIZE);
+        Label range = new Label(from + "–" + to + " of " + total);
+        range.getStyleClass().add("muted");
+        pager.getChildren().addAll(next, range);
+    }
+
+    // ---------------------------------------------------------------- Insights (charts from real records)
+
+    private void refreshInsights() {
+        String sig = cachedTrees.stream().map(t -> t.id + ":" + t.status + ":" + t.species + ":" + t.plantedDate)
+                .sorted().collect(Collectors.joining(","));
+        if (sig.equals(insightsSignature) && !insightsBox.getChildren().isEmpty()) return;
+        insightsSignature = sig;
+        insightsBox.getChildren().clear();
+        if (cachedTrees.isEmpty()) {
+            Label none = new Label(firstLoadDone ? "Charts appear once trees are registered." : "Loading insights…");
+            none.getStyleClass().add("muted");
+            insightsBox.getChildren().add(none);
+            return;
+        }
+        HBox row = new HBox(14, healthChart(), speciesChart(), plantingChart());
+        for (Node n : row.getChildren()) HBox.setHgrow(n, Priority.ALWAYS);
+        Label hint = new Label("Tip: click a slice or bar to filter the inventory below.");
+        hint.getStyleClass().add("muted");
+        insightsBox.setSpacing(8);
+        insightsBox.getChildren().addAll(row, hint);
+    }
+
+    private VBox chartCard(String title, String subtitle, Node chart) {
+        Label t = new Label(title); t.getStyleClass().add("chart-title");
+        Label s = new Label(subtitle); s.getStyleClass().add("muted");
+        VBox card = new VBox(4, t, s, chart);
+        card.getStyleClass().add("chart-card");
+        card.setPrefWidth(320);
+        VBox.setVgrow(chart, Priority.ALWAYS);
+        return card;
+    }
+
+    private Node healthChart() {
+        PieChart pie = new PieChart();
+        pie.setAnimated(false);
+        pie.setLabelsVisible(false);
+        pie.setLegendVisible(false);
+        FlowPane legend = new FlowPane(12, 4);
+        legend.setAlignment(Pos.CENTER);
+        pie.setStartAngle(90);
+        pie.setPrefSize(300, 210);
+        pie.getStyleClass().add("health-donut");
+        long total = cachedTrees.size();
+        for (String st : List.of("Healthy", "Monitoring", "At Risk", "Destroyed")) {
+            long n = countByStatus(st);
+            if (n == 0) continue;
+            PieChart.Data d = new PieChart.Data(st + " (" + n + ")", n);
+            pie.getData().add(d);
+            String color = statusAccent(st);
+            Runnable style = () -> {
+                if (d.getNode() == null) return;
+                d.getNode().setStyle("-fx-background-color: " + color + "; -fx-border-color: white; -fx-border-width: 2;");
+                Tooltip.install(d.getNode(), new Tooltip(st + ": " + n + (n == 1 ? " tree" : " trees") + " (" + percentage(n, total).replace(" of inventory", "") + ")\nClick to filter"));
+                d.getNode().setCursor(javafx.scene.Cursor.HAND);
+                d.getNode().setOnMouseClicked(e -> { statusFilter.setValue(st); performSearch(); });
+            };
+            d.nodeProperty().addListener((o, a, node) -> style.run());
+            style.run();
+            Label key = new Label(st + "  " + n, new Circle(5, Color.web(color)));
+            key.getStyleClass().add("legend-key");
+            key.setOnMouseClicked(e -> { statusFilter.setValue(st); performSearch(); });
+            Tooltip.install(key, new Tooltip("Show " + st.toLowerCase(Locale.ROOT) + " trees"));
+            legend.getChildren().add(key);
+        }
+        pie.setPrefSize(300, 180);
+        VBox donut = new VBox(4, pie, legend);
+        return chartCard("Health distribution", total + " trees by condition", donut);
+    }
+
+    private Node speciesChart() {
+        Map<String, Long> counts = cachedTrees.stream()
+                .collect(Collectors.groupingBy(t -> t.species == null || t.species.isBlank() ? "Unnamed" : t.species.trim(), Collectors.counting()));
+        List<Map.Entry<String, Long>> top = counts.entrySet().stream()
+                .sorted(Map.Entry.<String, Long>comparingByValue().reversed().thenComparing(Map.Entry.comparingByKey()))
+                .limit(6).collect(Collectors.toList());
+        CategoryAxis y = new CategoryAxis();
+        NumberAxis x = new NumberAxis();
+        x.setTickUnit(1); x.setMinorTickVisible(false); x.setForceZeroInRange(true);
+        x.setTickLabelFormatter(new javafx.util.StringConverter<>() {
+            @Override public String toString(Number n) { return n.doubleValue() == Math.rint(n.doubleValue()) ? String.valueOf(n.intValue()) : ""; }
+            @Override public Number fromString(String s) { return Double.parseDouble(s); }
+        });
+        BarChart<Number, String> chart = new BarChart<>(x, y);
+        chart.setAnimated(false);
+        chart.setLegendVisible(false);
+        chart.setPrefSize(300, 210);
+        chart.getStyleClass().add("species-chart");
+        XYChart.Series<Number, String> series = new XYChart.Series<>();
+        for (int i = top.size() - 1; i >= 0; i--) {
+            Map.Entry<String, Long> e = top.get(i);
+            XYChart.Data<Number, String> d = new XYChart.Data<>(e.getValue(), e.getKey());
+            series.getData().add(d);
+            d.nodeProperty().addListener((o, a, node) -> wireBar(node, e.getKey() + ": " + e.getValue() + (e.getValue() == 1 ? " tree" : " trees") + "\nClick to search",
+                    () -> { txtSearch.setText(e.getKey()); searchSuggestionsPopup.hide(); }));
+        }
+        chart.getData().add(series);
+        for (XYChart.Data<Number, String> d : series.getData()) {
+            if (d.getNode() != null) {
+                String k = d.getYValue();
+                wireBar(d.getNode(), k + ": " + d.getXValue() + " trees\nClick to search", () -> { txtSearch.setText(k); searchSuggestionsPopup.hide(); });
+            }
+        }
+        return chartCard("Top species", counts.size() + (counts.size() == 1 ? " species recorded" : " species recorded"), chart);
+    }
+
+    private Node plantingChart() {
+        java.util.TreeMap<Integer, Long> byYear = new java.util.TreeMap<>();
+        for (Tree t : cachedTrees) {
+            Integer y = plantedYear(t);
+            if (y != null) byYear.merge(y, 1L, Long::sum);
+        }
+        CategoryAxis x = new CategoryAxis();
+        NumberAxis y = new NumberAxis();
+        y.setTickUnit(1); y.setMinorTickVisible(false);
+        y.setTickLabelFormatter(new javafx.util.StringConverter<>() {
+            @Override public String toString(Number n) { return n.doubleValue() == Math.rint(n.doubleValue()) ? String.valueOf(n.intValue()) : ""; }
+            @Override public Number fromString(String s) { return Double.parseDouble(s); }
+        });
+        BarChart<String, Number> chart = new BarChart<>(x, y);
+        chart.setAnimated(false);
+        chart.setLegendVisible(false);
+        chart.setPrefSize(300, 210);
+        chart.getStyleClass().add("planting-chart");
+        chart.setCategoryGap(Math.max(14, 140 - 30 * Math.min(4, cachedTrees.stream().map(TreeDashboard::plantedYear).filter(java.util.Objects::nonNull).distinct().count())));
+        XYChart.Series<String, Number> series = new XYChart.Series<>();
+        for (Map.Entry<Integer, Long> e : byYear.entrySet()) {
+            XYChart.Data<String, Number> d = new XYChart.Data<>(String.valueOf(e.getKey()), e.getValue());
+            series.getData().add(d);
+            int year = e.getKey();
+            String tip = year + ": " + e.getValue() + (e.getValue() == 1 ? " tree planted" : " trees planted") + "\nClick to filter";
+            d.nodeProperty().addListener((o, a, node) -> wireBar(node, tip, () -> { yearFilter = year; performSearch(); }));
+        }
+        chart.getData().add(series);
+        for (XYChart.Data<String, Number> d : series.getData()) {
+            if (d.getNode() != null) {
+                int year = Integer.parseInt(d.getXValue());
+                wireBar(d.getNode(), year + ": " + d.getYValue() + " planted\nClick to filter", () -> { yearFilter = year; performSearch(); });
+            }
+        }
+        long undated = cachedTrees.stream().filter(t -> plantedYear(t) == null).count();
+        return chartCard("Plantings per year", undated == 0 ? "From recorded planting dates" : undated + " without a planting date", chart);
+    }
+
+    private static void wireBar(Node node, String tip, Runnable onClick) {
+        if (node == null) return;
+        Tooltip.install(node, new Tooltip(tip));
+        node.setCursor(javafx.scene.Cursor.HAND);
+        node.setOnMouseClicked(e -> onClick.run());
+    }
+
+    /** Updates the filter chip labels with how many records each status has. */
+    private void updateFilterCounts() {
+        for (Map.Entry<String, ToggleButton> e : filterChips.entrySet()) {
+            String choice = e.getKey();
+            long n = choice.equals("All statuses") ? cachedTrees.size() : countByStatus(choice);
+            e.getValue().setText((choice.equals("All statuses") ? "All" : choice) + "  " + n);
+            e.getValue().setSelected(choice.equals(statusFilter.getValue()));
+        }
     }
 
     private static String statusAccent(String status) {
@@ -461,45 +1050,66 @@ public class TreeDashboard extends Stage {
         hydrateTreeImageLocal(t);
         BorderPane card = new BorderPane();
         card.getStyleClass().add("card");
-        card.setPadding(new Insets(10));
+        card.setPadding(new Insets(12));
         ImageView photo = new ImageView();
         StackPane picture = new StackPane();
-        picture.setMinSize(92,94); picture.setPrefSize(104,104);
-        picture.setStyle("-fx-background-color: #e4ede5; -fx-background-radius: 8;");
+        picture.setMinSize(96,96); picture.setPrefSize(104,104); picture.setMaxSize(104,104);
+        picture.getStyleClass().add("card-photo");
         if (t.imageBytes != null && t.imageBytes.length > 0) {
             Image image = bytesToImage(t.imageBytes);
             if (image != null && !image.isError()) {
                 double size = Math.min(image.getWidth(), image.getHeight());
                 photo.setViewport(new javafx.geometry.Rectangle2D((image.getWidth()-size)/2, (image.getHeight()-size)/2, size, size));
-                photo.setImage(image); photo.setFitWidth(94); photo.setFitHeight(94);
+                photo.setImage(image); photo.setFitWidth(104); photo.setFitHeight(104);
+                javafx.scene.shape.Rectangle clip = new javafx.scene.shape.Rectangle(104, 104);
+                clip.setArcWidth(18); clip.setArcHeight(18);
+                photo.setClip(clip);
                 picture.getChildren().add(photo);
             }
         }
         if (picture.getChildren().isEmpty()) picture.getChildren().add(RegistryStyle.leaf());
-        Label species = new Label(t.species); species.setStyle("-fx-font-size: 15px; -fx-font-weight: bold;");
-        Label condition = new Label(t.status, new Circle(4,Color.web(statusAccent(t.status))));
-        condition.setStyle("-fx-font-size: 11px; -fx-background-color: #eff4f0; -fx-padding: 3 7; -fx-background-radius: 12;");
-        Label measurements = new Label(t.height + " m");
-        Label location = new Label("#" + t.id + "  ·  " + t.location); location.setWrapText(true);
-        location.getStyleClass().add("muted");
-        VBox info = new VBox(5, species, condition, measurements, location);
-        info.setPadding(new Insets(3,0,3,12));
+        Label species = new Label(t.species); species.getStyleClass().add("card-title");
+        String accent = statusAccent(t.status);
+        Label condition = new Label(t.status, new Circle(4, Color.web(accent)));
+        condition.getStyleClass().add("status-pill");
+        condition.setStyle("-fx-text-fill: " + accent + "; -fx-background-color: " + accent + "1A;");
+        Label id = new Label("#" + t.id);
+        id.getStyleClass().add("id-pill");
+        HBox badges = new HBox(6, condition, id);
+        badges.setAlignment(Pos.CENTER_LEFT);
+        Label measurements = new Label(fmtNumber(t.height) + " m tall  ·  " + fmtNumber(t.diameter) + " cm trunk");
+        measurements.getStyleClass().add("card-measure");
+        String planted = t.plantedDate == null || t.plantedDate.isBlank() ? "Planting date unknown" : "Planted " + t.plantedDate;
+        Label meta = new Label(planted + "  ·  " + (t.location == null ? "No location" : t.location));
+        meta.setWrapText(true);
+        meta.getStyleClass().add("muted");
+        VBox info = new VBox(6, species, badges, measurements, meta);
+        info.setPadding(new Insets(2,0,2,14));
         card.setLeft(picture); card.setCenter(info);
 
-        HBox actions = new HBox(8);
-        actions.setAlignment(Pos.CENTER_RIGHT);
-        if (canModifyTree(t)) {
-            Button btnEdit = createCardIconButton(editActionIcon, "E", RIVER_BLUE, "Edit");
-            btnEdit.setOnAction(e -> { e.consume(); editTree(t); });
-            Button btnDel = createCardIconButton(deleteActionIcon, "D", DELETE_RED, "Delete");
-            btnDel.setOnAction(e -> { e.consume(); deleteTree(t); });
-            actions.getChildren().addAll(btnEdit, btnDel);
-        }
-
+        HBox actions = treeActions(t, false);
+        actions.setPadding(new Insets(6, 0, 0, 0));
         card.setBottom(actions);
-        card.setOnMouseClicked(_ -> new TreeDialogs.TreeDetailDialog(this, t, this::canModifyTree, this::editTree, SDG_GREEN, RIVER_BLUE, PANEL_DARK).showAndWait());
+        // Click or Enter opens the record; right-click offers every action; a short press animation confirms.
+        card.setFocusTraversable(true);
+        card.setOnMouseClicked(e -> {
+            if (e.getButton() != javafx.scene.input.MouseButton.PRIMARY) return;
+            card.requestFocus();
+            javafx.animation.ScaleTransition press = new javafx.animation.ScaleTransition(Duration.millis(90), card);
+            press.setToX(0.985); press.setToY(0.985); press.setAutoReverse(true); press.setCycleCount(2);
+            press.setOnFinished(ev -> openDetails(t));
+            press.play();
+        });
+        card.setOnKeyPressed(e -> { if (e.getCode() == KeyCode.ENTER || e.getCode() == KeyCode.SPACE) openDetails(t); });
+        card.setOnContextMenuRequested(e -> { treeMenu(t).show(card, e.getScreenX(), e.getScreenY()); e.consume(); });
+        Tooltip.install(card, new Tooltip("Click for details · right-click for more actions"));
         int index = cardContainer.getChildren().size();
-        cardContainer.add(card, index % 2, index / 2);
+        cardContainer.add(card, index % cardColumns, index / cardColumns);
+    }
+
+    private static String fmtNumber(double v) {
+        if (v == Math.rint(v)) return String.format(Locale.US, "%.0f", v);
+        return String.format(Locale.US, "%.2f", v).replaceAll("0+$", "");
     }
 
     private HBox createStatsPanel() {
@@ -510,11 +1120,13 @@ public class TreeDashboard extends Stage {
         long healthy = countByStatus("Healthy");
         long monitoring = countByStatus("Monitoring");
         long atRisk = countByStatus("At Risk");
+        long destroyed = countByStatus("Destroyed");
         panel.getChildren().addAll(
-                createStatBox("Total Trees", total, PANEL_DARK, "In the registry"),
-                createStatBox("Healthy", healthy, SDG_GREEN, percentage(healthy, total)),
-                createStatBox("Monitoring", monitoring, RIVER_BLUE, percentage(monitoring, total)),
-                createStatBox("At Risk", atRisk, "#BC6C25", percentage(atRisk, total))
+                createStatBox("Total trees", total, total, "#20865B", "In the registry", "All statuses"),
+                createStatBox("Healthy", healthy, total, "#4F772D", percentage(healthy, total), "Healthy"),
+                createStatBox("Monitoring", monitoring, total, RIVER_BLUE, percentage(monitoring, total), "Monitoring"),
+                createStatBox("At Risk", atRisk, total, "#BC6C25", percentage(atRisk, total), "At Risk"),
+                createStatBox("Destroyed", destroyed, total, DELETE_RED, percentage(destroyed, total), "Destroyed")
         );
         if (isAdmin) onlineUsers.setText("Active users · " + activeUsersCount);
         return panel;
@@ -524,17 +1136,32 @@ public class TreeDashboard extends Stage {
         return (total == 0 ? 0 : Math.round(100.0 * count / total)) + "% of inventory";
     }
 
-    private VBox createStatBox(String title, long value, String accent, String summary) {
-        VBox box = new VBox(4);
+    private VBox createStatBox(String title, long value, long total, String accent, String summary, String filter) {
+        VBox box = new VBox(6);
+        // Each tile is a shortcut: click to show exactly those records in the inventory.
+        box.setOnMouseClicked(e -> { statusFilter.setValue(filter); performSearch(); });
+        box.setFocusTraversable(true);
+        box.setOnKeyPressed(e -> { if (e.getCode() == KeyCode.ENTER || e.getCode() == KeyCode.SPACE) { statusFilter.setValue(filter); performSearch(); } });
+        if (filter.equals(statusFilter.getValue())) box.getStyleClass().add("stat-active");
+        Tooltip.install(box, new Tooltip(filter.equals("All statuses") ? "Show all trees" : "Show " + title.toLowerCase(Locale.ROOT) + " trees"));
         box.setPrefWidth(180);
         HBox.setHgrow(box, Priority.ALWAYS);
         box.getStyleClass().add("stat");
-        Label heading = new Label(title);
+        Circle dot = new Circle(5, Color.web(accent));
+        Label heading = new Label(title, dot);
+        heading.setGraphicTextGap(8);
+        heading.getStyleClass().add("stat-title");
         Label count = new Label(String.valueOf(value));
-        count.setStyle("-fx-font-size: 27px; -fx-text-fill: " + accent + ";");
+        count.getStyleClass().add("stat-value");
+        // Share of inventory as a slim bar in the status colour.
+        ProgressBar share = new ProgressBar(total == 0 ? 0 : (double) value / total);
+        share.setMaxWidth(Double.MAX_VALUE);
+        share.setPrefHeight(6);
+        share.getStyleClass().add("stat-bar");
+        share.setStyle("-fx-accent: " + accent + ";");
         Label detail = new Label(summary);
         detail.getStyleClass().add("muted");
-        box.getChildren().addAll(heading, count, detail);
+        box.getChildren().addAll(heading, count, share, detail);
         return box;
     }
 
@@ -693,14 +1320,18 @@ public class TreeDashboard extends Stage {
                 consecutiveRefreshFailures = 0;
                 Platform.runLater(() -> {
                     connection.setText("Server online");
+                    firstLoadDone = true;
+                    lastUpdated.setText("Live · updated " + java.time.LocalTime.now().withNano(0));
                     reconnect.setVisible(false);
                     reconnect.setManaged(false);
                     cachedTrees.clear(); cachedTrees.addAll(newTrees);
+                    if (map3d != null) map3d.setTrees(new ArrayList<>(cachedTrees));
                     performSearch();
                     refreshSearchSuggestions();
                 });
             } catch (Exception ex) {
-                Platform.runLater(() -> { connection.setText("Server unavailable"); reconnect.setManaged(true); reconnect.setVisible(true); });
+                Platform.runLater(() -> { connection.setText("Server unavailable"); reconnect.setManaged(true); reconnect.setVisible(true);
+                    lastUpdated.setText("Offline · showing last data"); });
                 consecutiveRefreshFailures++;
                 if (consecutiveRefreshFailures <= 1) {
                     System.err.println("[Dashboard] Auto-refresh failed: " + ex.getClass().getSimpleName() + " - " + ex.getMessage());
@@ -715,11 +1346,46 @@ public class TreeDashboard extends Stage {
     }
 
     private void renderTreeList(List<Tree> list) {
+        if (cardContainer == null) return;
         cardContainer.getChildren().clear();
         inventoryCount.setText(list.size() + (list.size() == 1 ? " record" : " records"));
-        for (Tree t : list) addTreeCard(t);
-        if (list.isEmpty()) cardContainer.add(new Label("No matching tree records."), 0, 0);
+        if (tableView && inventoryTable != null) {
+            inventoryHolder.getChildren().setAll(inventoryTable);
+            inventoryTable.getItems().setAll(list);
+            inventoryTable.sort();
+        } else {
+            if (inventoryHolder != null) inventoryHolder.getChildren().setAll(cardContainer);
+            int pages = Math.max(1, (int) Math.ceil(list.size() / (double) PAGE_SIZE));
+            page = Math.max(0, Math.min(page, pages - 1));
+            for (Tree t : list.subList(page * PAGE_SIZE, Math.min(list.size(), (page + 1) * PAGE_SIZE))) addTreeCard(t);
+        }
+        if (!firstLoadDone && cachedTrees.isEmpty()) {
+            ProgressIndicator spinner = new ProgressIndicator();
+            spinner.setMaxSize(36, 36);
+            Label loading = new Label("Loading the inventory from the server…");
+            loading.getStyleClass().add("muted");
+            VBox box = new VBox(10, spinner, loading);
+            box.setAlignment(Pos.CENTER);
+            box.getStyleClass().add("empty-state");
+            cardContainer.add(box, 0, 0, cardColumns, 1);
+        } else if (list.isEmpty() && !tableView) {
+            Label none = new Label(cachedTrees.isEmpty() ? "No trees registered yet" : "No trees match these filters");
+            none.getStyleClass().add("section-title");
+            Label hint = new Label(cachedTrees.isEmpty() ? "Register a sapling to start the inventory."
+                    : "Try another species or ID, or clear the filters.");
+            hint.getStyleClass().add("muted");
+            Button action = cachedTrees.isEmpty() ? RegistryStyle.primary("+  Register Sapling", this::addNewTree)
+                    : RegistryStyle.secondary("Clear filters", () -> { yearFilter = null; txtSearch.clear(); statusFilter.setValue("All statuses"); performSearch(); });
+            VBox empty = new VBox(8, RegistryStyle.leaf(), none, hint, action);
+            empty.setAlignment(Pos.CENTER);
+            empty.getStyleClass().add("empty-state");
+            cardContainer.add(empty, 0, 0, cardColumns, 1);
+        }
+        updateFilterCounts();
+        updateActiveFilters(list.size());
+        updatePager(list.size());
         if (statsWrapper != null) statsWrapper.setTop(createStatsPanel());
+        refreshInsights();
     }
 
     private void addNewTree() {
@@ -731,16 +1397,9 @@ public class TreeDashboard extends Stage {
                     String resp = treeService.addTree(t, sessionToken);
                     Platform.runLater(() -> {
                         if (resp != null && resp.startsWith("SUCCESS")) {
-                            Alert ok = new Alert(Alert.AlertType.INFORMATION);
-                            ok.setHeaderText(null);
-                            if ("admin".equals(username)) {
-                                ok.setTitle("Tree Added");
-                                ok.setContentText("Tree has been added to the active inventory.\n" + resp);
-                            } else {
-                                ok.setTitle("Submission Received");
-                                ok.setContentText("Your tree entry is now pending admin review. It will appear in the grove once approved.\n" + resp);
-                            }
-                            ok.showAndWait();
+                            Toast.show(this, "admin".equals(username)
+                                    ? t.species + " added to the inventory. " + resp.replace("SUCCESS:", "").trim()
+                                    : t.species + " submitted. It will appear once an administrator approves it.", Toast.Kind.SUCCESS);
                             loadInitialData();
                         } else {
                             Alert err = new Alert(Alert.AlertType.ERROR,
@@ -762,6 +1421,7 @@ public class TreeDashboard extends Stage {
                 try {
                     String result = treeService.updateTree(updated, sessionToken);
                     if (!result.startsWith("SUCCESS")) throw new IllegalStateException(result);
+                    Platform.runLater(() -> Toast.show(this, updated.species + " #" + updated.id + " saved.", Toast.Kind.SUCCESS));
                     loadInitialData();
                 } catch (Exception ex) { handleRemoteFailure(ex, "Update Error"); }
             }).start();
@@ -783,10 +1443,7 @@ public class TreeDashboard extends Stage {
                     String resp = treeService.deleteTree(t.id, sessionToken);
                     Platform.runLater(() -> {
                         if (resp != null && resp.startsWith("SUCCESS")) {
-                            Alert ok = new Alert(Alert.AlertType.INFORMATION,
-                                    "Tree removed from inventory and added to the deleted tree archive.");
-                            ok.setHeaderText(null);
-                            ok.showAndWait();
+                            Toast.show(this, t.species + " #" + t.id + " moved to the archive.", Toast.Kind.SUCCESS);
                             loadInitialData();
                         } else {
                             Alert err = new Alert(Alert.AlertType.ERROR,

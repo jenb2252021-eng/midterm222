@@ -11,7 +11,7 @@ Use one tree throughout the defense. Let the panel see its assigned ID on the ra
 | 0:00–0:25 | Open **Registry** with the four sample trees. | “A species name alone is ambiguous. Two rangers can record two Benguet pines. Each record here has an ID, coordinates and a condition so another ranger can find the same tree.” |
 | 0:25–1:05 | On the ranger laptop, choose **Register Sapling**. Enter a species, measurements and planting date, choose a photo and pin the site. Submit and open **My submissions**. | “This is our field observation. I’ll read its assigned ID aloud. It is pending, so the inventory total should still be four.” |
 | 1:05–1:45 | On the host, open **Pending Review**. Point to the ID, owner, coordinates and photo. Approve the entry. | “I’m checking whether the photograph and measurements support this record. Approval moves this observation into the inventory with the same ID.” |
-| 1:45–2:30 | Return to **Registry**, search for the ID, then open **Field Map** and filter to the tree’s condition. | “The count has risen to five. Searching this ID finds the approved record. A second ranger can use its pin when returning to inspect the site.” |
+| 1:45–2:30 | Return to **Registry**, search for the ID, then choose **View in 3D** on its card. | “The count has risen to five. Searching this ID finds the approved record. On the 3D Forest Map the tree stands at its pin, with its health, age and monitoring history, so a second ranger can return to inspect the site.” |
 | 2:30–3:00 | Open **System States** and find the approval entry. End on the requirements matrix. | “The log records the review. Our test checks that approval preserves the ID and photograph. The matrix links that result back to the original problem and requirement.” |
 
 The numbers four and five assume the initial four-record dataset. The demo saves edits. On a later run, read the actual starting count and show a one-record increase. The four seeded trees are fictional. Use a photograph the team has permission to present.
@@ -34,7 +34,7 @@ The numbers four and five assume the initial four-record dataset. The demo saves
 
 **What does the password change protect?** The account file stores salted password hashes. The server checks a session token before privileged operations. Java RMI traffic is unencrypted in this build. The design assumes the project’s trusted local network.
 
-**How do you know the project improved?** Show a reproduced result. For example, R23 compares the submitted PNG with the approved photo, while UI05 finds all four seeded markers on the offline map. Use the previous paper’s evaluation as the historical baseline and the dated addendum for this build. A claim about ranger satisfaction needs observations from actual users.
+**How do you know the project improved?** Show a reproduced result. For example, R23 compares the submitted PNG with the approved photo, while UI05 finds all four seeded trees on the offline 3D map. Use the previous paper’s evaluation as the historical baseline and the dated addendum for this build. A claim about ranger satisfaction needs observations from actual users.
 
 **What evidence was outside the automated run?** The automated suites exercised individual services and JavaFX screens. The two-laptop discovery, disconnect and reconnect sequence, live field location accuracy and user feedback each require a team observation. Add the date, devices and result after the rehearsal.
 

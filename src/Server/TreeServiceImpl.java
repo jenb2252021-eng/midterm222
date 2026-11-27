@@ -41,7 +41,8 @@ public class TreeServiceImpl extends UnicastRemoteObject implements TreeService 
             if ("admin".equals(username)) {
                 String result = TreeJSONUtil.addTree(tree);
                 if (result.startsWith("SUCCESS")) {
-                    ActivityLogJSONUtil.log(username, "ADD_TREE", "Species: " + tree.species + ", Location: " + tree.location);
+                    ActivityLogJSONUtil.log(username, "ADD_TREE", "Species: " + tree.species + ", Location: " + tree.location
+                            + ", Tree ID: " + tree.id + ", Status: " + tree.status);
                 }
                 return result;
             } else {
@@ -112,9 +113,10 @@ public class TreeServiceImpl extends UnicastRemoteObject implements TreeService 
             tree.ownerUsername = existing.ownerUsername;
             tree.imagePath = existing.imagePath;
 
+            String changes = ActivityLogJSONUtil.describeChanges(existing, tree);
             String result = TreeJSONUtil.updateTree(tree);
             if (result.startsWith("SUCCESS")) {
-                ActivityLogJSONUtil.log(username, "UPDATE_TREE", "Updated Tree ID: " + tree.id);
+                ActivityLogJSONUtil.log(username, "UPDATE_TREE", "Updated Tree ID: " + tree.id + changes);
             }
             return result;
         } finally {
@@ -229,6 +231,19 @@ public class TreeServiceImpl extends UnicastRemoteObject implements TreeService 
             return result;
         } finally {
             treeLock.writeLock().unlock();
+        }
+    }
+
+    @Override
+    public ArrayList<String> getTreeHistory(int treeId, String sessionToken) throws RemoteException {
+        SessionManager.identity(sessionToken);
+        treeLock.readLock().lock();
+        try {
+            Tree t = TreeJSONUtil.getTreeById(treeId);
+            return ActivityLogJSONUtil.historyForTree(treeId,
+                    t != null ? t.species : null, t != null ? t.location : null);
+        } finally {
+            treeLock.readLock().unlock();
         }
     }
 

@@ -148,11 +148,12 @@ class TreeDialogs {
             VBox header = new VBox(4, RegistryStyle.heading("Pending Review"), new Label(pendingTrees.size() + (pendingTrees.size() == 1 ? " field submission awaits your review" : " field submissions awaiting your review")));
             header.getStyleClass().add("topbar"); root.setTop(header);
             ListView<Tree> choices = new ListView<>();
-            choices.setPrefWidth(220); choices.getItems().setAll(pendingTrees);
+            choices.setPrefWidth(250); choices.getItems().setAll(pendingTrees);
+            BorderPane.setMargin(choices, new Insets(20, 0, 20, 24));
             choices.setCellFactory(list -> new ListCell<>() {
                 @Override protected void updateItem(Tree t, boolean empty) {
                     super.updateItem(t,empty);
-                    setText(empty || t == null ? null : t.species + "\n" + t.ownerUsername + " · " + t.status);
+                    setText(empty || t == null ? null : t.species + "  #" + t.id + "\n" + t.ownerUsername + " · " + t.status);
                 }
             });
             choices.setPlaceholder(new Label("No pending submissions"));
@@ -160,22 +161,44 @@ class TreeDialogs {
             root.setCenter(new Label("All submissions reviewed."));
             choices.getSelectionModel().selectedItemProperty().addListener((obs, oldTree, t) -> {
                 if (t == null) return;
-                VBox detail = new VBox(14);
-                detail.setPadding(new Insets(24));
+                VBox card = new VBox(14);
+                card.getStyleClass().add("detail-card");
                 if (t.imageBytes != null && t.imageBytes.length > 0) {
                     ImageView photo = new ImageView(UIUtils.bytesToImage(t.imageBytes));
-                    photo.setPreserveRatio(true); photo.setFitHeight(160); detail.getChildren().add(photo);
+                    photo.setPreserveRatio(true); photo.setFitHeight(180); card.getChildren().add(photo);
                 }
-                Label notes = new Label(t.notes); notes.setWrapText(true);
-                detail.getChildren().addAll(RegistryStyle.heading(t.species),
-                    new Label("Submitted by " + displayNameResolver.apply(t.ownerUsername)),
-                    new Separator(), new Label("Height  " + t.height + " m      Diameter  " + t.diameter + " cm"),
-                    new Label(t.status + "   ·   #" + t.id), RegistryStyle.caption("FIELD NOTES"), notes,
-                    new Label("Planted  " + t.plantedDate), new Label(t.location));
-                root.setCenter(new ScrollPane(detail));
-                Button reject = new Button("Reject"); reject.setOnAction(e -> rejectPendingTree(t));
-                HBox actions = new HBox(10, reject, RegistryStyle.primary("Approve", () -> approvePendingTree(t)));
-                actions.setAlignment(Pos.CENTER_RIGHT); actions.setPadding(new Insets(15)); root.setBottom(actions);
+                Label status = new Label(t.status);
+                status.getStyleClass().add("status-pill");
+                String accent = statusColor(t.status);
+                status.setStyle("-fx-text-fill: " + accent + "; -fx-background-color: " + accent + "1A;");
+                Label id = new Label("#" + t.id); id.getStyleClass().add("id-pill");
+                HBox badges = new HBox(6, status, id);
+                Label by = new Label("Submitted by " + displayNameResolver.apply(t.ownerUsername));
+                by.getStyleClass().add("muted");
+                GridPane facts = new GridPane();
+                facts.setHgap(28); facts.setVgap(10);
+                String[][] rows = {
+                        {"Height", t.height + " m"}, {"Trunk diameter", t.diameter + " cm"},
+                        {"Planted", t.plantedDate == null ? "Unknown" : t.plantedDate},
+                        {"Location", t.location == null ? "No location" : t.location}};
+                for (int i = 0; i < rows.length; i++) {
+                    Label k = new Label(rows[i][0]); k.getStyleClass().add("muted");
+                    facts.add(k, 0, i); facts.add(new Label(rows[i][1]), 1, i);
+                }
+                Label notes = new Label(t.notes == null || t.notes.isBlank() ? "No field notes." : t.notes); notes.setWrapText(true);
+                card.getChildren().addAll(RegistryStyle.heading(t.species), badges, by, new Separator(), facts,
+                        RegistryStyle.caption("FIELD NOTES"), notes);
+                VBox page = new VBox(card);
+                page.setPadding(new Insets(20, 24, 20, 20));
+                ScrollPane scroll = new ScrollPane(page); scroll.setFitToWidth(true);
+                scroll.getStyleClass().add("page-scroll");
+                root.setCenter(scroll);
+                Button reject = new Button("Reject"); reject.getStyleClass().add("danger");
+                reject.setOnAction(e -> rejectPendingTree(t));
+                Label hint = new Label("Approving adds this tree to the inventory and the 3D Forest Map with the same ID.");
+                hint.getStyleClass().add("muted");
+                HBox actions = new HBox(10, hint, RegistryStyle.spacer(), reject, RegistryStyle.primary("Approve", () -> approvePendingTree(t)));
+                actions.setAlignment(Pos.CENTER_RIGHT); actions.getStyleClass().add("action-bar"); root.setBottom(actions);
             });
             choices.getSelectionModel().selectFirst();
             setCenter(root);
@@ -212,6 +235,15 @@ class TreeDialogs {
                 }
             });
         }
+    }
+
+    static String statusColor(String status) {
+        String s = status == null ? "" : status.toLowerCase(java.util.Locale.ROOT);
+        if (s.contains("healthy")) return "#4F772D";
+        if (s.contains("monitor")) return "#457B9D";
+        if (s.contains("risk")) return "#BC6C25";
+        if (s.contains("destroy")) return "#9D2235";
+        return "#6B8E23";
     }
 
     // --- Account Management (Admin only) ---

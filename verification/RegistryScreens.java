@@ -12,7 +12,6 @@ import javafx.animation.PauseTransition;
 import javafx.scene.*;
 import javafx.scene.control.*;
 import javafx.scene.image.*;
-import javafx.scene.web.WebView;
 import javafx.scene.layout.BorderPane;
 import javafx.util.Duration;
 
@@ -94,19 +93,32 @@ public class RegistryScreens {
                         navigate(scene,"Profile");
                         check("UI04 profile workspace", ((BorderPane)scene.getRoot()).getCenter().getClass().getSimpleName().equals("ProfileDialog"));
                         dashboard.show();
-                        navigate(scene,"Field Map");
-                        WebView web = (WebView)scene.getRoot().lookup(".web-view");
-                        PauseTransition mapDelay = new PauseTransition(Duration.seconds(5));
+                        navigate(scene,"3D Map");
+                        TreeMap3D map = (TreeMap3D)((BorderPane)scene.getRoot()).getCenter();
+                        PauseTransition mapDelay = new PauseTransition(Duration.seconds(4));
                         mapDelay.setOnFinished(event -> {
                             try {
-                                var engine = web.getEngine();
-                                check("UI05 four offline field map pins", Boolean.TRUE.equals(engine.executeScript(
-                                    "document.getElementById('btnTilesOffline').classList.contains('active') && document.querySelectorAll('.leaflet-marker-icon').length === 4")));
-                                check("UI09 bundled map imagery loaded", Boolean.TRUE.equals(engine.executeScript(
-                                    "Array.from(document.querySelectorAll('img.leaflet-tile')).some(i => i.complete && i.naturalWidth > 0 && i.src.indexOf('/tiles/') >= 0)")));
-                                capture("field-map", scene);
-                                engine.executeScript("var statusBox=document.getElementById('status'); statusBox.value='At Risk'; statusBox.onchange()");
-                                check("UI06 map status filter", "1 tree".equals(engine.executeScript("document.getElementById('count').textContent")));
+                                map.applyCss();
+                                ToggleButton offline = (ToggleButton)map.lookup("#btnTilesOffline");
+                                check("UI05 four trees on the offline 3D forest map", offline != null && offline.isSelected()
+                                        && map.getRenderedTreeCount() == 4);
+                                boolean placed = true;
+                                for (Model.Tree t : ((TreeService)services.get("TreeService")).getAllTrees(token)) {
+                                    String[] ll = t.location.split(",");
+                                    double[] want = map.project(Double.parseDouble(ll[0]), Double.parseDouble(ll[1]));
+                                    double[] got = map.getScenePosition(t.id);
+                                    placed &= got != null && Math.abs(got[0]-want[0]) < 0.01 && Math.abs(got[1]-want[1]) < 0.01;
+                                }
+                                check("UI09 each 3D tree stands at its recorded coordinates", placed);
+                                capture("forest-map", scene);
+                                @SuppressWarnings("unchecked")
+                                ComboBox<String> status = (ComboBox<String>)map.lookup(".combo-box");
+                                status.setValue("At Risk");
+                                ListView<?> list = map.lookupAll(".list-view").stream()
+                                        .filter(n -> n instanceof ListView<?> l && !l.getItems().isEmpty() && l.getItems().get(0) instanceof Model.Tree)
+                                        .map(n -> (ListView<?>)n).findFirst().orElseThrow();
+                                check("UI06 map status filter", list.getItems().size() == 1);
+                                status.setValue("All statuses");
                                 navigate(scene,"Registry");
                                 check("UI07 return to inventory", scene.getRoot().lookupAll(".card").size() == 4);
                                 var trees = (TreeService)services.get("TreeService");

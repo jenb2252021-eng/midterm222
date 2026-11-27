@@ -15,10 +15,7 @@ public final class MapWebUrls {
      */
     public static String tileUrlTemplate(Class<?> anchor) {
         try {
-            URL html = anchor.getResource("/map_web/field_map.html");
-            if (html == null) {
-                html = anchor.getResource("/map_web/picker.html");
-            }
+            URL html = anchor.getResource("/map_web/picker.html");
             if (html == null) {
                 return "";
             }
@@ -31,10 +28,7 @@ public final class MapWebUrls {
 
     public static String greyTileUrl(Class<?> anchor) {
         try {
-            URL html = anchor.getResource("/map_web/field_map.html");
-            if (html == null) {
-                html = anchor.getResource("/map_web/picker.html");
-            }
+            URL html = anchor.getResource("/map_web/picker.html");
             if (html == null) {
                 return "";
             }

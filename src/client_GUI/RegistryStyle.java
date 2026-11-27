@@ -25,7 +25,11 @@ final class RegistryStyle {
     static SVGPath navIcon(String name) {
         String outline = switch (name) {
             case "Registry" -> "M2 2h6v6H2z M12 2h6v6h-6z M2 12h6v6H2z M12 12h6v6h-6z";
-            case "Field Map" -> "M2 5l5-3 6 3 5-3v13l-5 3-6-3-5 3z M7 2v13 M13 5v13";
+            case "Table" -> "M2 3h16v14H2z M2 8h16 M2 13h16 M8 3v14";
+            case "Pin" -> "M10 18s6-5.5 6-10a6 6 0 0 0-12 0c0 4.5 6 10 6 10z M10 6.5a1.5 1.5 0 1 1 0 3a1.5 1.5 0 1 1 0-3";
+            case "Layers" -> "M10 2l8 4-8 4-8-4z M2 10l8 4 8-4 M2 14l8 4 8-4";
+            case "Insights" -> "M3 17V9 M8 17V4 M13 17v-6 M18 17V7";
+            case "3D Map" -> "M10 1l8 4.5v9L10 19l-8-4.5v-9z M2 5.5l8 4.5 8-4.5 M10 10v9";
             case "Messages" -> "M3 3h14v10H7l-4 4z";
             case "Profile", "Manage Users" -> "M13 6a3 3 0 1 1-6 0a3 3 0 1 1 6 0 M3 17c0-7 14-7 14 0";
             case "Archive" -> "M2 3h16v4H2z M4 7v10h12V7 M8 10h4";
@@ -49,10 +53,15 @@ final class RegistryStyle {
         Label l = new Label(text); l.getStyleClass().add("caption"); return l;
     }
     static HBox brand(boolean registry) {
-        VBox name = new VBox(2, new Label("The Lorax"));
-        if (registry) name.getChildren().add(caption("Baguio Registry"));
+        Label title = new Label("The Lorax"); title.getStyleClass().add("brand-name");
+        VBox name = new VBox(1, title);
+        if (registry) { Label sub = new Label("Baguio Registry"); sub.getStyleClass().add("brand-sub"); name.getChildren().add(sub); }
         HBox row = new HBox(10, leaf(), name);
         row.setAlignment(Pos.CENTER_LEFT); return row;
+    }
+    static Button secondary(String name, Runnable action) {
+        Button b = new Button(name); b.getStyleClass().add("secondary");
+        b.setOnAction(e -> action.run()); return b;
     }
     static Button primary(String name, Runnable action) {
         Button b = new Button(name); b.getStyleClass().add("primary");
