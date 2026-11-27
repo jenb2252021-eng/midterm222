@@ -22,6 +22,21 @@ The **Registry** is the dashboard, and everything on it works with the live regi
 - **Feedback**: saves, approvals and deletions show a short notification in the corner; errors still open a dialog; deleting, rejecting and signing out ask for confirmation. The Register Sapling form checks each field as you go and explains what to fix.
 - **Sidebar**: the current page is highlighted, the Administration section folds away, and the ☰ button (or a window narrower than 1150 px) switches to an icon-only sidebar with tooltips.
 
+## Administration and messaging
+
+Every administration page uses the same layout: a header, a toolbar for search and filters, a list or table, and a details panel. Pages load in the background with a placeholder, show a clear empty or error state (with **Try again**), ask before any change that matters, and confirm results with a notification. All data comes from the server and its activity log.
+
+- **Messages**: people on the left (search, an "Online" filter, avatars with online dots, unread counts per person), the conversation on the right (chat bubbles, day separators, times, "Sending… / Sent / Seen", and Retry for messages that failed). Enter sends, Shift+Enter starts a new line. Images are checked (type, 20 MB limit) and previewed before sending, and open full size when clicked. Right-click a message to copy, edit, unsend (or, as an administrator, delete for everyone) or save an image. Conversations and the people list refresh every few seconds, and an offline person is clearly marked.
+- **Pending Review**: a queue of submission cards (search, submitted date from the activity log), a details panel, and Approve / Reject with confirmation. The **Approved** and **Rejected** tabs list past decisions from the activity log.
+- **Manage Users**: a sortable table (name, role, online status, last sign-in, trees recorded) with search and role/status filters. The details panel offers **Send message**, **Change password** (validated: 8+ characters, typed twice) and **Delete account** (you type the username to confirm; the primary administrator can't be deleted).
+- **Archive**: deleted trees in a searchable, filterable table with details and history, **Restore to inventory** (original ID and photo) and **Delete permanently** (confirmed; can't be undone).
+- **Ranger Access**: the current sign-in state, when it last changed and by whom, who is signed in now, recent ranger sign-ins, and a single confirmed button to pause or enable ranger sign-in.
+- **System States**: the server activity log as a searchable table filtered by action (Ctrl/Cmd+C copies a row).
+
+New server calls for these pages: `ChatService.getUnreadCountsBySender`, `TreeService.restoreDeletedTree` and `TreeService.purgeDeletedTree` (both administrator-only and recorded in the activity log). Check them with `verification/run.ps1 -Admin`, which also writes `docs/screens/admin-*.png`.
+
+**Not available yet (would need server changes):** a separate "delivered" receipt (the server records sent and seen only), "last seen" times for offline people (only sign-ins are logged), account creation dates and account suspension (the account store doesn't keep them), and roles beyond administrator and ranger (the system has only these two).
+
 ## 3D Forest Map
 
 The **3D Map** workspace shows every registered tree as an interactive 3D model, standing at its recorded coordinates on a 3D map of Baguio in a modern GIS style: OpenStreetMap basemap, beige 3D buildings, real hill terrain, a blue sky with horizon haze, and the same south-southeast default view. Open it from the sidebar, from **View 3D Forest Map** on the registry, or from **View in 3D** on any tree card. It replaces the old 2D Field Map and keeps all of its features: search by species or ID, the status filter with a live count, online/offline tiles, the health legend, and each tree's photo and record.

@@ -67,4 +67,9 @@ public interface ChatService extends Remote {
      * Returns the total number of unread messages for this user.
      */
     int getUnreadCount(String sessionToken) throws RemoteException;
+
+    /**
+     * Unread message counts for the signed-in user, keyed by sender username (senders with no unread messages are absent).
+     */
+    java.util.HashMap<String, Integer> getUnreadCountsBySender(String sessionToken) throws RemoteException;
 }

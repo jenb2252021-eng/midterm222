@@ -95,4 +95,16 @@ public interface TreeService extends Remote {
      * @return Lines formatted as {@code "yyyy-MM-dd HH:mm | user | event"}, newest first
      */
     ArrayList<String> getTreeHistory(int treeId, String sessionToken) throws RemoteException;
+
+    /**
+     * Restore an archived (deleted) tree to the active inventory with its original ID and photo (admin only).
+     * @return Success or error message
+     */
+    String restoreDeletedTree(int treeId, String sessionToken) throws RemoteException;
+
+    /**
+     * Permanently remove a record from the archive, including its archived photo (admin only). Cannot be undone.
+     * @return Success or error message
+     */
+    String purgeDeletedTree(int treeId, String sessionToken) throws RemoteException;
 }

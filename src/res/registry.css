@@ -204,3 +204,62 @@
 .section-toggle:hover { -fx-text-fill: #11633d; }
 .legend-key { -fx-font-size: 11.5px; -fx-text-fill: #35453b; -fx-cursor: hand; -fx-graphic-text-gap: 6; -fx-padding: 2 6; -fx-background-radius: 999; }
 .legend-key:hover { -fx-background-color: #eef5f0; }
+
+/* Loading skeletons and states */
+.skeleton { -fx-background-color: #e7ede9; -fx-background-radius: 8; }
+.state-box { -fx-background-color: white; -fx-background-radius: 14; -fx-border-color: #dfe5e0; -fx-border-radius: 14; }
+
+/* Messages */
+.messages { -fx-background-color: #f4f7f5; -fx-padding: 0; }
+.messages > .split-pane-divider { -fx-background-color: #dfe5e0; -fx-padding: 0 1 0 0; }
+.people-panel { -fx-background-color: white; }
+.people-list { -fx-border-color: transparent; -fx-padding: 0; }
+.people-list .list-cell { -fx-padding: 9 10; -fx-background-radius: 10; }
+.people-list .list-cell:selected { -fx-background-color: #e1eee6; }
+.person-name { -fx-font-size: 13.5px; }
+.person-title { -fx-font-size: 16px; -fx-font-weight: bold; }
+.status-online { -fx-text-fill: #1f8a55; -fx-font-size: 12px; }
+.unread-badge {
+    -fx-background-color: #20865b; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 11px;
+    -fx-background-radius: 999; -fx-padding: 2 8; -fx-min-width: 22; -fx-alignment: center;
+}
+.conversation { -fx-background-color: #f4f7f5; }
+.conversation-header { -fx-background-color: white; -fx-padding: 14 20; -fx-border-color: transparent transparent #dfe5e0 transparent; }
+.offline-banner { -fx-background-color: #fff8ec; -fx-text-fill: #6b4a12; -fx-padding: 8 20; -fx-border-color: transparent transparent #f0d9ad transparent; }
+.conversation-scroll, .conversation-scroll > .viewport { -fx-background-color: transparent; -fx-background: #f4f7f5; }
+.bubble { -fx-padding: 9 13; -fx-background-radius: 16; }
+.bubble-theirs { -fx-background-color: white; -fx-border-color: #e1e8e3; -fx-border-radius: 16; -fx-background-radius: 16 16 16 4; -fx-border-radius: 16 16 16 4; }
+.bubble-mine { -fx-background-color: #20865b; -fx-background-radius: 16 16 4 16; }
+.bubble-mine .bubble-text { -fx-text-fill: white; }
+.bubble-mine .bubble-meta { -fx-text-fill: #d5eee0; }
+.bubble-mine .hyperlink { -fx-text-fill: white; }
+.bubble-pending { -fx-opacity: 0.75; }
+.bubble-failed { -fx-background-color: #9d2235; }
+.bubble-text { -fx-font-size: 13.5px; -fx-text-fill: #18231e; }
+.bubble-meta { -fx-font-size: 10.5px; -fx-text-fill: #7c8a82; }
+.bubble-deleted { -fx-font-style: italic; -fx-text-fill: #8a9890; }
+.bubble-mine .bubble-deleted { -fx-text-fill: #d5eee0; }
+.day-separator { -fx-background-color: #e7ede9; -fx-text-fill: #42534a; -fx-font-size: 11px; -fx-padding: 3 10; -fx-background-radius: 999; }
+.composer { -fx-background-color: white; -fx-padding: 12 16 8 16; -fx-border-color: #dfe5e0 transparent transparent transparent; }
+.composer-input { -fx-background-color: #fafbfa; -fx-background-radius: 12; -fx-border-color: #dbe2dc; -fx-border-radius: 12; -fx-pref-height: 54; -fx-padding: 2; }
+.composer-input:focused { -fx-border-color: #20865b; }
+.composer-input .content { -fx-background-color: transparent; -fx-background-radius: 12; }
+.composer-input .scroll-pane { -fx-background-color: transparent; }
+.composer-icon { -fx-background-color: #f1f6f3; -fx-background-radius: 999; -fx-padding: 10; -fx-cursor: hand; }
+.composer-icon:hover { -fx-background-color: #e1eee6; }
+.attachment-preview { -fx-background-color: #f4f7f5; -fx-background-radius: 10; -fx-padding: 8; -fx-border-color: #dfe5e0; -fx-border-radius: 10; }
+.conversation-empty { -fx-background-color: #f4f7f5; }
+
+/* Admin pages */
+.queue-list .list-cell { -fx-padding: 12; }
+.access-state { -fx-font-size: 22px; -fx-font-weight: bold; }
+.danger:disabled, .secondary:disabled { -fx-opacity: 0.45; }
+.nav { -fx-graphic-text-gap: 12; }
+.nav:pressed { -fx-scale-x: 0.98; -fx-scale-y: 0.98; }
+.primary:focused, .secondary:focused, .danger:focused, .chip:focused, .segment:focused {
+    -fx-border-color: #20865b; -fx-border-width: 2; -fx-border-radius: 9;
+}
+.inventory-table .table-row-cell:empty, .inventory-table .table-row-cell:odd:empty { -fx-background-color: white; -fx-border-color: transparent; }
+.inventory-table .table-row-cell:odd { -fx-background-color: white; }
+.inventory-table .table-row-cell:odd:selected, .inventory-table .table-row-cell:selected { -fx-background-color: #e1eee6; }
+.inventory-table .table-cell { -fx-border-color: transparent; }

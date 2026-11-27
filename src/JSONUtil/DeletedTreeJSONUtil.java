@@ -25,6 +25,20 @@ public class DeletedTreeJSONUtil {
         persist();
     }
 
+    /** Removes an archived record (restore or permanent delete) and returns it, or null when not archived. */
+    public static synchronized Tree removeDeletedTree(int id) {
+        for (int i = 0; i < deletedTrees.size(); i++) {
+            Tree t = deletedTrees.get(i);
+            if (t.id == id) {
+                if (t.imageBytes == null || t.imageBytes.length == 0) t.imageBytes = ImageStorage.loadDeletedImageById(id);
+                deletedTrees.remove(i);
+                persist();
+                return t;
+            }
+        }
+        return null;
+    }
+
     public static synchronized ArrayList<Tree> getDeletedTrees() {
         return new ArrayList<>(deletedTrees);
     }
